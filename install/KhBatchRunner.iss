@@ -305,6 +305,9 @@ begin
     RemovePerUserCopies('AccBatchRunner', '2024');
     RemovePerUserCopies('AccBatchRunner', '2025');
     RemovePerUserCopies('AccBatchRunner', '2026');
+    RemovePerUserCopies('AccBatchLauncher', '2024');
+    RemovePerUserCopies('AccBatchLauncher', '2025');
+    RemovePerUserCopies('AccBatchLauncher', '2026');
   end;
 end;
 

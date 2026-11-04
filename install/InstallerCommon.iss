@@ -240,7 +240,7 @@ end;
 procedure RemovePerUserCopiesInProfile(ProfileDir, BaseName, Year: String);
 var
   Dir: String;
-  Exts: array[0..3] of String;
+  Exts: array[0..5] of String;
   I: Integer;
   F: String;
 begin
@@ -249,7 +249,10 @@ begin
   Exts[1] := '.dll';
   Exts[2] := '.pdb';
   Exts[3] := '.deps.json';
-  for I := 0 to 3 do
+  // A dev deploy also copies the scheduled-task launcher beside the add-in.
+  Exts[4] := '.exe';
+  Exts[5] := '.exe.config';
+  for I := 0 to 5 do
   begin
     F := Dir + BaseName + Exts[I];
     if FileExists(F) then
