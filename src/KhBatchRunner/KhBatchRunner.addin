@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>KH-Tool</Name>
+    <Assembly>KhBatchRunner.dll</Assembly>
+    <AddInId>28fa58cf-c893-4eeb-8caa-40380371a011</AddInId>
+    <FullClassName>KhBatchRunner.App</FullClassName>
+    <VendorId>KANGHUN</VendorId>
+    <VendorDescription>Kanghun BIM — in-house tools</VendorDescription>
+  </AddIn>
+</RevitAddIns>

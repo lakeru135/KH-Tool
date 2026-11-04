@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    KhMcp.exe: the MCP server Claude Code starts (stdio). It owns no Revit logic — it lists the
+    tools from McpContract and forwards each call over a named pipe to KH-Tool's AI Bridge inside
+    Revit, which runs it on the API thread.
+
+    net48 for the same reason as KhBatchLauncher: it runs OUTSIDE Revit, so it cannot lean on the
+    .NET 8 that Revit 2025+ brings, and .NET Framework 4.8 is on every supported Windows. JSON via
+    System.Web.Extensions (part of the Framework), so nothing ships beside it. It is copied into
+    a KhMcp\ subfolder of the add-in output so no Framework-only file ever sits next to the net8
+    add-in DLL.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>KhMcp</RootNamespace>
+    <AssemblyName>KhMcp</AssemblyName>
+    <Configurations>Debug;Release</Configurations>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <!-- Roslyn's translated messages: English only, so no language folders ship. -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The tool list and wire format are a contract with the bridge in KH-Tool: linked, never restated. -->
+    <Compile Include="..\KhBatchRunner\Mcp\McpContract.cs" Link="Shared\Mcp\McpContract.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Web.Extensions" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="PolySharp" Version="1.14.1" PrivateAssets="all" />
+    <!-- run_code: compiles the AI's C# here, outside Revit (CodeCompiler.cs). -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+  </ItemGroup>
+
+</Project>

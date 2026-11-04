@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Throwaway harness that drives SettingsBundle.Export/Import against a REDIRECTED settings root,
+    so the round trip is proven on real files without touching the developer's own %AppData%.
+    Deliberately NOT in KhBatchRunner.sln — same rule as tools\ThemePreview.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\KhBatchRunner\KhBatchRunner.csproj" />
+  </ItemGroup>
+</Project>

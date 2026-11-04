@@ -1,0 +1,223 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Multi-version build: switch the target Revit release with -p:RevitVersion=2024|2025|2026
+    (default 2026, set in Directory.Build.props). Revit 2024 runs add-ins on .NET Framework
+    4.8; 2025/2026 run on .NET 8 — so the TFM is derived from RevitVersion below. Output and
+    obj are per-version so the net48 (2024) and net8 (2025/2026) artifacts never mix.
+  -->
+  <PropertyGroup>
+    <RevitVersion Condition="'$(RevitVersion)' == ''">2026</RevitVersion>
+    <!-- 2024 = .NET Framework 4.8; 2025/2026 = .NET 8. -->
+    <TargetFramework Condition="'$(RevitVersion)' == '2024'">net48</TargetFramework>
+    <TargetFramework Condition="'$(TargetFramework)' == ''">net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- DRW Helper: the drawing-production ribbon (active-model view creation + annotation). Own
+         dll, manifest, AddInId and installer; it installs into an Addins subfolder. -->
+    <AssemblyName Condition="'$(Edition)' == 'DRW'">DrwHelper</AssemblyName>
+    <AssemblyName Condition="'$(AssemblyName)' == ''">KhBatchRunner</AssemblyName>
+    <RootNamespace>KhBatchRunner</RootNamespace>
+    <Configurations>Debug;Release</Configurations>
+    <!-- REVIT<year> + EDITION_<edition> (e.g. EDITION_DRW) drive the #if compile switches. -->
+    <DefineConstants>$(DefineConstants);REVIT$(RevitVersion);EDITION_$(Edition)</DefineConstants>
+    <!-- FullUnlimited: the SAME product as Full (same AddInId, assembly, ribbon tab and schedule
+         owner) with the build-validity gate compiled out — the copy we run ourselves, which must
+         never be handed to anyone who is meant to keep updating. Named for what it does, because
+         EDITION_FullUnlimited at a use site would not say why the code is missing. -->
+    <DefineConstants Condition="'$(Edition)' == 'FullUnlimited'">$(DefineConstants);NO_EXPIRY_GATE</DefineConstants>
+    <!-- DRW has no release channel of its own yet. The update manifest (latest.json) and its
+         minVersion floor belong to the batch-runner products; judging DRW 0.x against them would
+         block it outright, so the gate is compiled out until DRW has its own manifest. -->
+    <DefineConstants Condition="'$(Edition)' == 'DRW'">$(DefineConstants);NO_EXPIRY_GATE</DefineConstants>
+    <!-- Revit loads the dll itself; don't copy the (huge) API dlls next to ours. -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- Per-version output dir so net48 (2024) deps never land next to a net8 (2026) build.
+         Full keeps bin\<cfg>\<ver>\ (existing installers point there); a non-Full edition
+         gets bin\<cfg>\<edition>\<ver>\ so editions' artifacts never mix. -->
+    <OutputPath Condition="'$(Edition)' != 'Full'">bin\$(Configuration)\$(Edition)\$(RevitVersion)\</OutputPath>
+    <OutputPath Condition="'$(OutputPath)' == ''">bin\$(Configuration)\$(RevitVersion)\</OutputPath>
+  </PropertyGroup>
+
+  <!-- net48 (Revit 2024) only. -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net48'">
+    <!-- Guarantee every NuGet runtime asset (System.Text.Json + transitives) lands in bin
+         so the add-in folder is self-contained — Revit 2024 ships none of these. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <!-- SDK-style net48 doesn't implicitly reference System.Net.Http, but ImplicitUsings
+         emits `global using System.Net.Http;` (HttpClient is used in Forma\DataManagementClient). -->
+    <Reference Include="System.Net.Http" />
+    <!-- ZipArchive (Reporting\XlsxWriter) needs System.IO.Compression on net48 (auto on net8). -->
+    <Reference Include="System.IO.Compression" />
+    <!-- The 4.8 Developer Pack isn't installed; this supplies the reference assemblies. -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <!-- Compile-time polyfills for init/required/record-struct/Index/Range on net48. -->
+    <PackageReference Include="PolySharp" Version="1.14.1" PrivateAssets="all" />
+    <!-- Bring the net48-only shims (e.g. KeyValuePair.Deconstruct in Compat\NetFxShims) into
+         scope everywhere via a global using — the namespace exists only on this target. -->
+    <Using Include="KhBatchRunner.Compat" />
+  </ItemGroup>
+
+  <!--
+    The scheduled-run launcher ships INSIDE the add-in folder, next to this assembly, for every
+    Revit year and both editions. TaskSchedulerGateway.LauncherExePath() resolves it relative to
+    the running assembly, so wherever the add-in is installed the launcher is already beside it —
+    including a dev install and a side-by-side Full/DRW pair.
+
+    ReferenceOutputAssembly=false because nothing here links against it: it is a separate process,
+    always net48 (it must run BEFORE Revit, so it cannot depend on the .NET 8 that Revit 2025+
+    brings), and this project targets net48 or net8 depending on the Revit year.
+  -->
+  <ItemGroup>
+    <!-- NU1702: a net8 project referencing a net48 one. Expected and harmless here precisely
+         because ReferenceOutputAssembly is false — this is a build-order edge, not a reference. -->
+    <ProjectReference Include="..\KhBatchLauncher\KhBatchLauncher.csproj"
+                      ReferenceOutputAssembly="false" Private="false" NoWarn="NU1702" />
+  </ItemGroup>
+
+  <Target Name="CopyScheduledRunLauncher" AfterTargets="Build">
+    <MSBuild Projects="..\KhBatchLauncher\KhBatchLauncher.csproj" Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="ScheduledRunLauncher" />
+    </MSBuild>
+    <Copy SourceFiles="@(ScheduledRunLauncher)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="%(ScheduledRunLauncher.RootDir)%(Directory)%(Filename)%(Extension).config"
+          DestinationFolder="$(OutDir)" SkipUnchangedFiles="true"
+          Condition="Exists('%(ScheduledRunLauncher.RootDir)%(Directory)%(Filename)%(Extension).config')" />
+  </Target>
+
+  <!-- KH-Tool's AI Bridge talks to KhMcp.exe, the MCP server Claude Code starts. KH-Tool editions
+       only (DRW never starts a bridge). Copied into a KhMcp\ subfolder: it is a net48 exe and
+       must never put Framework files beside the add-in DLL. Same build-order edge as the launcher. -->
+  <ItemGroup Condition="'$(Edition)' != 'DRW'">
+    <ProjectReference Include="..\KhMcp\KhMcp.csproj"
+                      ReferenceOutputAssembly="false" Private="false" NoWarn="NU1702" />
+  </ItemGroup>
+
+  <Target Name="CopyKhMcpServer" AfterTargets="Build" Condition="'$(Edition)' != 'DRW'">
+    <MSBuild Projects="..\KhMcp\KhMcp.csproj" Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="KhMcpServer" />
+    </MSBuild>
+    <Copy SourceFiles="@(KhMcpServer)" DestinationFolder="$(OutDir)KhMcp" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="%(KhMcpServer.RootDir)%(Directory)%(Filename)%(Extension).config"
+          DestinationFolder="$(OutDir)KhMcp" SkipUnchangedFiles="true"
+          Condition="Exists('%(KhMcpServer.RootDir)%(Directory)%(Filename)%(Extension).config')" />
+    <!-- run_code's compiler (Roslyn) and what it needs, beside the exe. -->
+    <ItemGroup>
+      <KhMcpLibs Include="%(KhMcpServer.RootDir)%(Directory)*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(KhMcpLibs)" DestinationFolder="$(OutDir)KhMcp" SkipUnchangedFiles="true" />
+  </Target>
+
+  <PropertyGroup>
+    <RevitApiDir Condition="'$(RevitApiDir)' == ''">C:\Program Files\Autodesk\Revit $(RevitVersion)</RevitApiDir>
+  </PropertyGroup>
+
+  <!-- Revit API refs: local HintPath for the installed versions (2024/2026).
+       -p:RevitApiFromNuGet=true builds 2026 against NuGet reference assemblies instead: this PC's
+       Revit updated itself to 2026.5, whose RevitAPI.dll needs .NET 10 and so cannot be compiled
+       against with the .NET 8 SDK — and a build against it would not load in 2026.0–2026.4 anyway.
+       2026.4.10 is the newest 2026 API on .NET 8; the output loads in 2026.5 too. -->
+  <ItemGroup Condition="'$(RevitVersion)' != '2025' and !('$(RevitVersion)' == '2026' and '$(RevitApiFromNuGet)' == 'true')">
+    <Reference Include="RevitAPI">
+      <HintPath>$(RevitApiDir)\RevitAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(RevitApiDir)\RevitAPIUI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <!-- Revit 2025 isn't installed here — use NuGet reference assemblies (build-only).
+       ExcludeAssets="runtime" is the NuGet equivalent of <Private>false</Private>. -->
+  <ItemGroup Condition="'$(RevitVersion)' == '2025'">
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI"   Version="2025.3.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2025.3.0" ExcludeAssets="runtime" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RevitVersion)' == '2026' and '$(RevitApiFromNuGet)' == 'true'">
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI"   Version="2026.4.10" ExcludeAssets="runtime" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2026.4.10" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+
+  <!-- Copy the edition's .addin manifest next to the build output for easy manual install.
+       Full and FullUnlimited → KhBatchRunner.addin (Assembly KhBatchRunner.dll, SAME AddInId:
+       the unrestricted build is the same product and is meant to replace the gated one on the one
+       PC that installs it); DRW → DrwHelper.addin (distinct AddInId). The
+       conditions name their editions explicitly rather than testing "not DRW" — an unrecognised
+       Edition then copies no manifest and the build script's existence check fails loudly, which
+       beats silently shipping a manifest that claims someone else's AddInId. -->
+  <ItemGroup Condition="'$(Edition)' == 'Full' Or '$(Edition)' == 'FullUnlimited'">
+    <None Update="KhBatchRunner.addin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup Condition="'$(Edition)' == 'DRW'">
+    <None Update="DrwHelper.addin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Optional build-time override of Product.BuiltInExpiryUtc: -p:ExpiryUtc=yyyy-MM-dd. Read back
+       by Product.ResolveBuiltInExpiryUtc(), which falls back to the literal in source when absent.
+       This is how an already-expired build is produced for testing without ever committing a past
+       date — the source default stays honest and a release build simply omits the property. -->
+  <ItemGroup Condition="'$(ExpiryUtc)' != ''">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>BuiltInExpiryUtc</_Parameter1>
+      <_Parameter2>$(ExpiryUtc)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <!--
+    DEBUG-only test fixture for the seed actions (Actions/DevSeedActions.cs) — a minimal
+    DXF the automated test loop imports, then purges, to exercise Purge Import CAD without
+    a real project model. Not part of the installer; dev/build output only.
+  -->
+  <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+    <None Update="Fixtures\seed.dxf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Bundle the logo into the DLL so the add-in has no external asset dependency. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\KanghunPureLogo.png" />
+  </ItemGroup>
+
+  <!-- Families the DRW tools load when a model lacks them, saved once per Revit year (a family
+       saved in a later year cannot open in an earlier one): only this year's copies go in. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\Families\$(RevitVersion)\*.rfa" LogicalName="Families.%(Filename)%(Extension)" />
+    <!-- Enlarge Door & Window's seed: one legend with one legend component, copied into a model
+         that has no legend to duplicate (the API cannot make a legend from nothing). -->
+    <EmbeddedResource Include="Resources\Families\$(RevitVersion)\*.rvt" LogicalName="Families.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The liveness harness (tools/LivenessSim) exercises the needs-attention decision directly: ChildLiveness,
+      RunSupervisor's round/slot arithmetic and TrackingCsvReader are all internal, and testing them
+      through the public surface would mean starting real Revits, which is precisely what the
+      harness exists to avoid. Test-only visibility; nothing ships with a dependency on it.
+    -->
+    <InternalsVisibleTo Include="LivenessSim" />
+    <!--
+      ThemePreview (1.4.0) needs the same access for the ROUND-TRIP gate: it loads a ScheduledJob
+      into each schedule window and reads it back out, which means calling LoadJobIntoForm and
+      TryBuildJob. Those are window internals by design — the alternative is making the mapping
+      public purely to test it, which is worse. Test-only visibility; nothing ships depending on it.
+    -->
+    <InternalsVisibleTo Include="ThemePreview" />
+  </ItemGroup>
+
+</Project>

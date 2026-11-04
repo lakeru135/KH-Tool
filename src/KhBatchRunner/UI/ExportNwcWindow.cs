@@ -1,0 +1,447 @@
+using System.Drawing;
+using System.Globalization;
+using System.Windows.Forms;
+using KhBatchRunner.Batch;
+using KhBatchRunner.Presets;
+
+namespace KhBatchRunner.UI;
+
+/// <summary>
+/// Creates and edits the named Export-NWC option sets that Batch Run and Schedule Run pick from,
+/// and runs one immediately over a saved model set.
+///
+/// <para><b>Laid out like the team's existing NWC panel</b> — the same options in the same
+/// four-column grid, the same Entire Model / 3D Views choice, the same naming row — because that
+/// is the arrangement people already read, and a batch tool that asks the same questions in a
+/// different order is a tool you have to re-learn.</para>
+///
+/// <para>Smaller than <see cref="CutModelWindow"/> despite the option count: Cut model has to
+/// browse Forma for a publish target, and this writes to a plain folder. What they share is the
+/// shape — a named set is the unit, because an action that carries its own configuration cannot be
+/// built by <see cref="Actions.ActionRegistry"/> and has to hand that configuration to the job.</para>
+/// </summary>
+public sealed class ExportNwcWindow : Form
+{
+    private readonly ComboBox _setsCombo;
+    private readonly TextBox _nameBox;
+    private readonly TextBox _outputBox;
+
+    // Bird's grid, read left to right, top to bottom.
+    private readonly CheckBox _convertElementProperties;
+    private readonly CheckBox _exportLinks;
+    private readonly CheckBox _exportRoomAsAttribute;
+    private readonly CheckBox _findMissingMaterials;
+    private readonly CheckBox _divideFileIntoLevels;
+    private readonly CheckBox _exportParts;
+    private readonly CheckBox _exportRoomGeometry;
+    private readonly CheckBox _exportElementIds;
+    private readonly CheckBox _internalCoordinates;
+    private readonly CheckBox _exportUrls;
+    private readonly CheckBox _convertLinkedCad;
+    private readonly CheckBox _convertLights;
+    private readonly TextBox _facetingBox;
+    private readonly ComboBox _parametersCombo;
+
+    private readonly RadioButton _entireModelRadio;
+    private readonly RadioButton _viewsRadio;
+    private readonly TextBox _viewContainsBox;
+
+    private readonly TextBox _prefixBox;
+    private readonly TextBox _suffixBox;
+    private readonly CheckBox _nameModelCheck;
+    private readonly CheckBox _nameViewCheck;
+
+    private readonly ListBox _modelSetsList;
+    private readonly TextBox _destBox;
+    private readonly Label _status;
+
+    /// <summary>The options to run with, set only when the user chose Run. Null on Close.</summary>
+    public ExportNwcInputSet? RunSpec { get; private set; }
+
+    /// <summary>The model set to run over, when <see cref="RunSpec"/> is set.</summary>
+    public string SelectedModelSetName { get; private set; } = "";
+
+    public ExportNwcWindow()
+    {
+        Text = "Export NWC — options and run";
+        StartPosition = FormStartPosition.CenterScreen;
+        AutoScaleDimensions = new SizeF(7F, 15F);
+        AutoScaleMode = AutoScaleMode.Font;
+        ClientSize = new Size(900, 700);
+        MinimumSize = new Size(760, 620);
+
+        CheckBox Chk(string text, bool on = false) =>
+            new() { Text = text, AutoSize = true, Checked = on, Margin = new Padding(3, 4, 12, 4) };
+
+        var root = FormLayout.SingleColumn();
+
+        Label note = FormLayout.NoteLabel(this,
+            "Writes Navisworks .nwc files. Choose the whole model, or every 3D view whose title " +
+            "contains the text you give (case sensitive; leave it blank for all 3D views) — a " +
+            "model can then produce several files, one per view, each with its own log row. A " +
+            "model matching nothing exports as a whole model instead and says so. Leave the output " +
+            "folder empty to write beside the run's own logs.");
+
+        _setsCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        _setsCombo.SelectedIndexChanged += (_, _) => LoadSelectedSet();
+
+        _nameBox = new TextBox();
+        _outputBox = new TextBox();
+        var browse = new Button { Text = "Browse…", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
+        browse.Click += (_, _) => PickFolder(_outputBox);
+
+        // --- the option grid, four columns like the panel it mirrors ---
+        _convertElementProperties = Chk("Convert Element Properties", true);
+        _exportLinks = Chk("Export Links");
+        _exportRoomAsAttribute = Chk("Export Room As Attribute", true);
+        _findMissingMaterials = Chk("Find Missing Materials", true);
+
+        _divideFileIntoLevels = Chk("Divide File Into Levels", true);
+        _exportParts = Chk("Export Parts", true);
+        _exportRoomGeometry = Chk("Export Room Geometry");
+        _exportElementIds = Chk("Export Element Ids", true);
+
+        _internalCoordinates = Chk("Export Internal Coordinates (uncheck for shared)");
+        _exportUrls = Chk("Export URLs", true);
+        _convertLinkedCad = Chk("Export Linked CAD");
+        _convertLights = Chk("Convert Lights");
+
+        _facetingBox = new TextBox { Text = "1", Width = 60 };
+        _parametersCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200 };
+        _parametersCombo.Items.Add(new NamedItem(NwcParameterMode.All.ToString(), "All parameters"));
+        _parametersCombo.Items.Add(new NamedItem(NwcParameterMode.Elements.ToString(), "Element parameters only"));
+        _parametersCombo.Items.Add(new NamedItem(NwcParameterMode.None.ToString(), "No parameters"));
+        _parametersCombo.SelectedIndex = 0;
+
+        var grid = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 4, AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(0, 4, 0, 4)
+        };
+        // AutoSize columns, NOT Percent 25. Four equal quarters of the dialog gave each caption about
+        // 206px, and "Convert Element Properties" needs 211 while "Export Internal Coordinates
+        // (uncheck for shared)" needs 350 — so both shipped truncated, and every caption in the grid
+        // truncated once the dialog was dragged to its minimum. A Percent column clips an AutoSize
+        // child; only an AutoSize column widens to fit it. The four-column shape is unchanged.
+        for (int i = 0; i < 4; i++) grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        foreach (Control c in new Control[]
+                 {
+                     _convertElementProperties, _exportLinks, _exportRoomAsAttribute, _findMissingMaterials,
+                     _divideFileIntoLevels, _exportParts, _exportRoomGeometry, _exportElementIds,
+                     _internalCoordinates, _exportUrls, _convertLinkedCad, _convertLights,
+                 })
+            grid.Controls.Add(c);
+
+        // --- scope: entire model, or views whose title contains … ---
+        _entireModelRadio = new RadioButton { Text = "Export entire model", AutoSize = true, Checked = true };
+        _viewsRadio = new RadioButton { Text = "Export 3D views — titles contain:", AutoSize = true };
+        _viewContainsBox = new TextBox { Width = 200, Enabled = false };
+        _viewsRadio.CheckedChanged += (_, _) => _viewContainsBox.Enabled = _viewsRadio.Checked;
+        var scopeRow = FormLayout.FlowRow(
+            _entireModelRadio, _viewsRadio, _viewContainsBox,
+            new Label { Text = "(case sensitive; blank = all 3D views)", AutoSize = true, Margin = new Padding(3, 6, 3, 3) });
+
+        // --- naming convention ---
+        _prefixBox = new TextBox { Width = 120 };
+        _suffixBox = new TextBox { Width = 120 };
+        _nameModelCheck = Chk("Model name", true);
+        _nameViewCheck = Chk("View name");
+        var nameRow = FormLayout.FlowRow(
+            new Label { Text = "Prefix:", AutoSize = true, Margin = new Padding(3, 6, 3, 3) }, _prefixBox,
+            _nameModelCheck, _nameViewCheck,
+            new Label { Text = "Suffix:", AutoSize = true, Margin = new Padding(3, 6, 3, 3) }, _suffixBox);
+
+        _modelSetsList = new ListBox { Dock = DockStyle.Fill, SelectionMode = SelectionMode.One };
+        // Labels and dims from the account snapshot, and ENSURES one exists rather than hoping
+        // another window took it first — see ModelSetAccess.EnsureSnapshot.
+        ModelSetAccess.AttachGreying(_modelSetsList, i => (i as SetItem)?.Preset,
+            onSnapshotReady: RefreshModelSets);
+        RefreshModelSets();
+
+        _destBox = new TextBox
+        {
+            Text = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "KhBatchRunner")
+        };
+        var destBrowse = new Button { Text = "Browse…", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
+        destBrowse.Click += (_, _) => PickFolder(_destBox);
+
+        var saveBtn = new Button { Text = "Save set", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
+        saveBtn.Click += (_, _) => SaveSet();
+        var dupBtn = new Button { Text = "Duplicate", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
+        dupBtn.Click += (_, _) => DuplicateSet();
+        var deleteBtn = new Button { Text = "Delete set", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
+        deleteBtn.Click += (_, _) => DeleteSet();
+
+        var runBtn = new Button
+        {
+            Text = "Run", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            MinimumSize = new Size(90, 0)
+        };
+        runBtn.Click += (_, _) => Commit();
+        var cancelBtn = new Button
+        {
+            Text = "Close", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            MinimumSize = new Size(90, 0), DialogResult = DialogResult.Cancel
+        };
+
+        _status = new Label { AutoSize = true, Margin = new Padding(3, 6, 3, 3) };
+
+        FormLayout.AddAutoRow(root, note);
+        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Saved options set:", _setsCombo));
+        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Set name:", _nameBox));
+        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Output folder:", _outputBox, browse));
+        FormLayout.AddAutoRow(root, grid);
+        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Faceting factor:", _facetingBox));
+        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Parameters:", _parametersCombo));
+        FormLayout.AddAutoRow(root, scopeRow);
+        FormLayout.AddAutoRow(root, new Label { Text = "File naming:", AutoSize = true });
+        FormLayout.AddAutoRow(root, nameRow);
+        FormLayout.AddAutoRow(root, FormLayout.FlowRow(saveBtn, dupBtn, deleteBtn));
+        FormLayout.AddAutoRow(root, new Label { Text = "Model set to run over:", AutoSize = true });
+        FormLayout.AddFillRow(root, _modelSetsList, 100);
+        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Export CSV log to:", _destBox, destBrowse));
+        FormLayout.AddAutoRow(root, _status);
+        FormLayout.AddAutoRow(root, FormLayout.FlowRow(runBtn, cancelBtn));
+
+        Controls.Add(root);
+        CancelButton = cancelBtn;
+        Theme.Apply(this);
+        FormLayout.AlignLabels(this);
+
+        // A floor under the model-set list, so the rows below it cannot squeeze it into a line.
+        _modelSetsList.MinimumSize = new Size(0, 110);
+
+        // Fit the dialog to what it actually contains, then refuse to go below it — the idiom nine
+        // other windows already use (CutModelWindow and friends). Without it this dialog opened at a
+        // hardcoded 900x700 that its own rows had outgrown: FormLayout's table does not scroll, so
+        // the percent row holding the model-set list was starved toward zero and the rows after it
+        // overflowed on top of each other. That is why "Model set to run over:" appeared sliced in
+        // half underneath the "Export CSV log to:" row.
+        ClientSize = new Size(
+            Math.Max(ClientSize.Width, root.PreferredSize.Width), root.PreferredSize.Height);
+        MinimumSize = Size;
+
+        ReloadSets(ExportNwcSetStore.TryLoadLastUsed()?.Name);
+    }
+
+    private void ReloadSets(string? select)
+    {
+        _setsCombo.Items.Clear();
+        foreach (ExportNwcInputSet s in ExportNwcSetStore.LoadAll())
+            _setsCombo.Items.Add(new SetOption(s));
+
+        if (_setsCombo.Items.Count == 0) return;
+        for (int i = 0; i < _setsCombo.Items.Count && select != null; i++)
+            if (((SetOption)_setsCombo.Items[i]).Set.Name.Equals(select, StringComparison.OrdinalIgnoreCase))
+            { _setsCombo.SelectedIndex = i; return; }
+        _setsCombo.SelectedIndex = 0;
+    }
+
+    private void LoadSelectedSet()
+    {
+        if (_setsCombo.SelectedItem is not SetOption opt) return;
+        ExportNwcInputSet s = opt.Set;
+
+        _nameBox.Text = s.Name;
+        _outputBox.Text = s.OutputFolder;
+
+        _convertElementProperties.Checked = s.ConvertElementProperties;
+        _exportLinks.Checked = s.ExportLinks;
+        _exportRoomAsAttribute.Checked = s.ExportRoomAsAttribute;
+        _findMissingMaterials.Checked = s.FindMissingMaterials;
+        _divideFileIntoLevels.Checked = s.DivideFileIntoLevels;
+        _exportParts.Checked = s.ExportParts;
+        _exportRoomGeometry.Checked = s.ExportRoomGeometry;
+        _exportElementIds.Checked = s.ExportElementIds;
+        _internalCoordinates.Checked = s.UseInternalCoordinates;
+        _exportUrls.Checked = s.ExportUrls;
+        _convertLinkedCad.Checked = s.ConvertLinkedCADFormats;
+        _convertLights.Checked = s.ConvertLights;
+        _facetingBox.Text = s.FacetingFactor.ToString(CultureInfo.InvariantCulture);
+        SelectNamed(_parametersCombo, s.Parameters.ToString());
+
+        _entireModelRadio.Checked = s.ExportEntireModel;
+        _viewsRadio.Checked = !s.ExportEntireModel;
+        _viewContainsBox.Text = s.ViewTitleContains;
+        _viewContainsBox.Enabled = _viewsRadio.Checked;
+
+        _prefixBox.Text = s.NamePrefix;
+        _suffixBox.Text = s.NameSuffix;
+        _nameModelCheck.Checked = s.NameIncludesModel;
+        _nameViewCheck.Checked = s.NameIncludesView;
+    }
+
+    private static void SelectNamed(ComboBox combo, string value)
+    {
+        for (int i = 0; i < combo.Items.Count; i++)
+            if (((NamedItem)combo.Items[i]).Value.Equals(value, StringComparison.OrdinalIgnoreCase))
+            { combo.SelectedIndex = i; return; }
+        if (combo.Items.Count > 0) combo.SelectedIndex = 0;
+    }
+
+    private ExportNwcInputSet Current()
+    {
+        // A faceting factor that will not parse falls back to Revit's own default rather than
+        // failing the dialog — it is a quality dial, not a decision.
+        if (!double.TryParse(_facetingBox.Text.Trim(), NumberStyles.Float,
+                CultureInfo.InvariantCulture, out double faceting) || faceting <= 0)
+            faceting = 1.0;
+
+        var mode = NwcParameterMode.All;
+        if (_parametersCombo.SelectedItem is NamedItem ni)
+            Enum.TryParse(ni.Value, out mode);
+
+        return new ExportNwcInputSet
+        {
+            Name = _nameBox.Text.Trim(),
+            OutputFolder = _outputBox.Text.Trim(),
+            ExportEntireModel = _entireModelRadio.Checked,
+            ViewTitleContains = _viewContainsBox.Text.Trim(),
+            NamePrefix = _prefixBox.Text.Trim(),
+            NameSuffix = _suffixBox.Text.Trim(),
+            NameIncludesModel = _nameModelCheck.Checked,
+            NameIncludesView = _nameViewCheck.Checked,
+            ConvertElementProperties = _convertElementProperties.Checked,
+            ExportLinks = _exportLinks.Checked,
+            ExportRoomAsAttribute = _exportRoomAsAttribute.Checked,
+            FindMissingMaterials = _findMissingMaterials.Checked,
+            DivideFileIntoLevels = _divideFileIntoLevels.Checked,
+            ExportParts = _exportParts.Checked,
+            ExportRoomGeometry = _exportRoomGeometry.Checked,
+            ExportElementIds = _exportElementIds.Checked,
+            ExportUrls = _exportUrls.Checked,
+            UseInternalCoordinates = _internalCoordinates.Checked,
+            ConvertLinkedCADFormats = _convertLinkedCad.Checked,
+            ConvertLights = _convertLights.Checked,
+            FacetingFactor = faceting,
+            Parameters = mode,
+            DestinationFolder = _destBox.Text.Trim(),
+            ProjectLogName = "Export NWC"
+        };
+    }
+
+    private void SaveSet()
+    {
+        ExportNwcInputSet set = Current();
+        if (string.IsNullOrWhiteSpace(set.Name))
+        {
+            SetStatus("Give the set a name before saving.");
+            return;
+        }
+        ExportNwcSetStore.Save(set);
+        ReloadSets(set.Name);
+        SetStatus($"Saved '{set.Name}'.");
+    }
+
+    /// <summary>
+    /// Forks the selected set to a new "&lt;name&gt; (copy)" and loads the copy.
+    ///
+    /// <para>This window is the one that could already fork by accident: unlike its six siblings
+    /// <see cref="SaveSet"/> has no rename branch, so retyping the name in the "Set name" box and
+    /// saving silently left the original behind. Same gesture, opposite outcome, depending on which
+    /// dialog you were in. The button makes the intent explicit in all of them.</para>
+    /// </summary>
+    private void DuplicateSet()
+    {
+        if (_setsCombo.SelectedItem is not SetOption opt)
+        {
+            SetStatus("Select a saved set to duplicate.");
+            return;
+        }
+        ExportNwcInputSet copy = opt.Set.Clone();
+        copy.Name = SetDuplication.UniqueName(opt.Set.Name, ExportNwcSetStore.LoadAll().Select(s => s.Name));
+        try
+        {
+            ExportNwcSetStore.Save(copy);
+        }
+        catch (Exception ex)
+        {
+            SetStatus("Could not duplicate set: " + ex.Message.Split('\n')[0]);
+            return;
+        }
+        ReloadSets(copy.Name);
+        SetStatus($"Duplicated '{opt.Set.Name}' as '{copy.Name}'.");
+    }
+
+    private void DeleteSet()
+    {
+        if (_setsCombo.SelectedItem is not SetOption opt)
+        {
+            SetStatus("Select a saved set to delete.");
+            return;
+        }
+        ExportNwcSetStore.Delete(opt.Set.Name);
+        ReloadSets(null);
+        SetStatus($"Deleted '{opt.Set.Name}'.");
+    }
+
+    private void Commit()
+    {
+        ExportNwcInputSet set = Current();
+        if (_modelSetsList.SelectedItem is not SetItem chosen)
+        {
+            SetStatus("Select the model set to run over.");
+            return;
+        }
+        if (!set.HasOutput)
+        {
+            SetStatus("Set an output folder, or a CSV log folder to write the .nwc files beside.");
+            return;
+        }
+
+        ExportNwcSetStore.SaveLastUsed(set);
+        RunSpec = set;
+        SelectedModelSetName = chosen.Preset.Name;
+        DialogResult = DialogResult.OK;
+        Close();
+    }
+
+    private void PickFolder(TextBox target)
+    {
+        using var dlg = new FolderBrowserDialog { SelectedPath = target.Text };
+        if (dlg.ShowDialog(this) == DialogResult.OK) target.Text = dlg.SelectedPath;
+    }
+
+    private void SetStatus(string text) => _status.Text = text;
+
+    /// <summary>A dropdown entry whose stored value differs from its label — same shape as the one
+    /// every other window here keeps privately.</summary>
+    private sealed class NamedItem
+    {
+        public string Value { get; }
+        private readonly string _label;
+        public NamedItem(string value, string label) { Value = value; _label = label; }
+        public override string ToString() => _label;
+    }
+
+    private sealed class SetOption
+    {
+        public ExportNwcInputSet Set { get; }
+        public SetOption(ExportNwcInputSet set) => Set = set;
+        public override string ToString() => Set.Name;
+    }
+
+    /// <summary>Repopulates the model-set list, preserving the selection. Called on first build and
+    /// again when the account snapshot lands, because the ORDER depends on the verdict.</summary>
+    private void RefreshModelSets()
+    {
+        string? keep = (_modelSetsList.SelectedItem as SetItem)?.Preset.Name;
+        _modelSetsList.BeginUpdate();
+        _modelSetsList.Items.Clear();
+        foreach (ModelPreset p in ModelSetAccess.VisibleSets())
+        {
+            int i = _modelSetsList.Items.Add(new SetItem(p));
+            if (keep != null && p.Name == keep) _modelSetsList.SelectedIndex = i;
+        }
+        _modelSetsList.EndUpdate();
+    }
+
+    private sealed class SetItem
+    {
+        public ModelPreset Preset { get; }
+        public SetItem(ModelPreset preset) => Preset = preset;
+        public override string ToString() => ModelSetAccess.Label(Preset,
+            Preset.IsFolderBacked ? $"{Preset.Name}  [folder(s)]" : $"{Preset.Name}  ({Preset.Models.Count})");
+    }
+}

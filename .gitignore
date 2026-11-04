@@ -1,0 +1,45 @@
+# ---- Build output ----
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+*.dll
+*.pdb
+*.exe
+*.deps.json
+
+# Built installers are release artifacts — distribute via GitHub Releases, not the repo.
+install/Output/
+
+# ---- Visual Studio / Rider / VS Code ----
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.rsuser
+[Ll]og/
+[Ll]ogs/
+
+# ---- NuGet ----
+*.nupkg
+*.snupkg
+packages/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ---- Local verification scratch (UI screenshots, render comparisons, probe output) ----
+tmp/
+
+# ---- OS cruft ----
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# ---- Claude Code local state (machine-specific; shared config is not kept here) ----
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

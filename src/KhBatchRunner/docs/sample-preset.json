@@ -1,0 +1,18 @@
+{
+  "Name": "Sample Preset (edit me)",
+  "ProjectCode": "KH-SAMPLE",
+  "Models": [
+    {
+      "DisplayName": "ARC-Tower-A.rvt",
+      "Region": "US",
+      "ProjectGuid": "00000000-0000-0000-0000-000000000000",
+      "ModelGuid": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "DisplayName": "STR-Tower-A.rvt",
+      "Region": "US",
+      "ProjectGuid": "00000000-0000-0000-0000-000000000000",
+      "ModelGuid": "00000000-0000-0000-0000-000000000000"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+<Project>
+
+  <!--
+    Scoped to src\KhBatchRunner\ so tools\ThemePreview is untouched.
+    RevitVersion is the single build axis: -p:RevitVersion=2024|2025|2026.
+    BaseIntermediateOutputPath must be set here (before the SDK props evaluate) so each
+    Revit version restores into its own obj\ — the package graph differs per version
+    (net48 + PolySharp for 2024, Nice3point for 2025), and a shared obj\project.assets.json
+    would force a full re-restore on every version switch and let CLI/IDE builds race.
+  -->
+  <PropertyGroup>
+    <RevitVersion Condition="'$(RevitVersion)' == ''">2026</RevitVersion>
+    <!--
+      Edition axis: -p:Edition=Full (default) | FullUnlimited | DRW.
+        DRW           — "DRW Helper", the drawing-production ribbon (Revit 2026 only). Own
+                        assembly (DrwHelper.dll), manifest, AddInId and installer.
+        FullUnlimited — Full with the build-validity gate compiled out (NO_EXPIRY_GATE, set in
+                        KhBatchRunner.csproj). Same assembly name, same AddInId, same installer
+                        AppId: it REPLACES the gated Full build on the PC that installs it.
+      obj\ is per-edition so restores never collide.
+    -->
+    <Edition Condition="'$(Edition)' == ''">Full</Edition>
+    <!-- Full keeps the original obj\<ver>\ path (so existing tooling/installers are untouched);
+         any other edition gets its own obj\<edition>\<ver>\ so restores never collide. -->
+    <BaseIntermediateOutputPath Condition="'$(Edition)' != 'Full'">obj\$(Edition)\$(RevitVersion)\</BaseIntermediateOutputPath>
+    <BaseIntermediateOutputPath Condition="'$(BaseIntermediateOutputPath)' == ''">obj\$(RevitVersion)\</BaseIntermediateOutputPath>
+    <!--
+      obj and bin are now per-version (obj\2026\, bin\Debug\2024\, …). The SDK's default
+      source glob only auto-excludes the CURRENT build's obj\<ver>\, so without this a 2024
+      build would compile 2026's generated AssemblyInfo.cs (net8-only attributes) and vice
+      versa. Exclude every obj\ and bin\ from the default C# item globs.
+    -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;bin\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+</Project>

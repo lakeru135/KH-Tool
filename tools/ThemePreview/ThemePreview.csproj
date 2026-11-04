@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Standalone dev harness — renders KhBatchRunner's WinForms dialogs outside Revit and
+    saves PNG screenshots of each (light + dark), so a theme/layout change can be reviewed
+    without an interactive Revit session. See Program.cs for how it fakes just enough data
+    to construct each dialog, and how it resolves RevitAPI/RevitAPIUI at runtime.
+
+    Deliberately NOT added to KhBatchRunner.sln — a broken build here must never block the
+    add-in's own build. Build directly:
+
+      dotnet build tools\ThemePreview\ThemePreview.csproj -c Debug     (from the repository root)
+
+    Then run the built exe with two arguments — theme ("dark" or "light", sets
+    KHBATCH_FORCE_THEME) and the output folder for the PNGs:
+
+      bin\Debug\net8.0-windows\ThemePreview.exe  dark  "C:\path\to\ui-shots"
+      bin\Debug\net8.0-windows\ThemePreview.exe  light "C:\path\to\ui-shots"
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Overridable by the TargetFramework environment variable, exactly as KhBatchRunner.csproj
+         is. Not decoration: Revit 2026.5 ships API assemblies built for .NET 10, so on a PC with
+         that Revit the add-in must be built as net10 — and a gate pinned to net8 cannot then
+         reference it ("Project KhBatchRunner is not compatible with net8.0-windows"), which meant
+         the gates could not run at all on exactly the machine the code was being changed on. -->
+    <TargetFramework Condition="'$(TargetFramework)' == ''">net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ThemePreview</AssemblyName>
+    <RootNamespace>ThemePreview</RootNamespace>
+    <!-- Dev tool only — keep it out of the installer/publish story entirely. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Pulls in KhBatchRunner.dll (and, transitively, its own RevitAPI/RevitAPIUI
+         references — Private=false there too, so this project resolves them itself; see
+         Program.cs's AssemblyResolve hook). -->
+    <ProjectReference Include="..\..\src\KhBatchRunner\KhBatchRunner.csproj" />
+  </ItemGroup>
+
+</Project>

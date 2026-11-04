@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>DRW Helper</Name>
+    <!-- Relative to this manifest: the dll and its dependencies live in their own subfolder so they
+         never share (and on uninstall, never take away) the batch runner's copies in the Addins root. -->
+    <Assembly>DrwHelper\DrwHelper.dll</Assembly>
+    <AddInId>8e3e0b53-4ba2-4a92-9444-b534dbbe713a</AddInId>
+    <FullClassName>KhBatchRunner.App</FullClassName>
+    <VendorId>KANGHUN</VendorId>
+    <VendorDescription>Kanghun BIM — in-house tools</VendorDescription>
+  </AddIn>
+</RevitAddIns>

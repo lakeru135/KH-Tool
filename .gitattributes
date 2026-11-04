@@ -1,0 +1,7 @@
+* text=auto
+
+# Bundled Revit families, seed model and images: Git LFS
+*.rfa filter=lfs diff=lfs merge=lfs -text
+*.rvt filter=lfs diff=lfs merge=lfs -text
+*.png filter=lfs diff=lfs merge=lfs -text
+*.ico binary

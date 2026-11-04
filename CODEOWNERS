@@ -1,0 +1,9 @@
+# Every change needs the maintainer's review. Narrow this per folder as contributors take ownership.
+*                         @lakeru135
+
+# Areas that can damage a model or leak access: always the maintainer.
+/src/KhBatchRunner/Auth/   @lakeru135
+/src/KhBatchRunner/Mcp/    @lakeru135
+/src/KhMcp/                @lakeru135
+/src/KhBatchRunner/Update/ @lakeru135
+/install/                  @lakeru135

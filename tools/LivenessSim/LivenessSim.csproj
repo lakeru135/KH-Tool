@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Regression harness for the kill decision — the logic that on 2026-07-26 terminated three
+    actively-working Revits and nine that were merely starting, and lost 14 models doing it.
+
+    It exercises ChildLiveness, RunSupervisor's round/slot arithmetic and TrackingCsvReader
+    directly, with scripted clocks and probes, so every one of those failures has a test that runs
+    in milliseconds and needs no Revit, no Forma session and no models.
+
+    Deliberately NOT added to KhBatchRunner.sln — a broken harness must never block the add-in's
+    own build. It relies on InternalsVisibleTo("LivenessSim") in KhBatchRunner.csproj.
+
+      dotnet run  (project) tools\LivenessSim\LivenessSim.csproj
+
+    Exit code 0 = every case passed; 1 = at least one regression.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Overridable by the TargetFramework environment variable, exactly as KhBatchRunner.csproj
+         is. Not decoration: Revit 2026.5 ships API assemblies built for .NET 10, so on a PC with
+         that Revit the add-in must be built as net10 — and a gate pinned to net8 cannot then
+         reference it ("Project KhBatchRunner is not compatible with net8.0-windows"), which meant
+         the gates could not run at all on exactly the machine the code was being changed on. -->
+    <TargetFramework Condition="'$(TargetFramework)' == ''">net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>LivenessSim</AssemblyName>
+    <RootNamespace>LivenessSim</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\KhBatchRunner\KhBatchRunner.csproj" />
+  </ItemGroup>
+
+  <!--
+    The scheduled-run launcher must sit beside KhBatchRunner.dll here too, because that is how
+    TaskSchedulerGateway.LauncherExePath() finds it and the harness executes the real thing rather
+    than a stand-in. Without this the launcher cases could only be skipped — and they cover the
+    0x1-on-another-PC failure, which is precisely the kind that must not be skippable.
+  -->
+  <Target Name="CopyScheduledRunLauncher" AfterTargets="Build">
+    <MSBuild Projects="..\..\src\KhBatchLauncher\KhBatchLauncher.csproj" Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="ScheduledRunLauncher" />
+    </MSBuild>
+    <Copy SourceFiles="@(ScheduledRunLauncher)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

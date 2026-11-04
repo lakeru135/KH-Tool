@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The ink gate for the framework the OTHER gate cannot reach.
+
+    tools\ThemePreview is net8-only (it uses System.Windows.Forms.TaskDialog, which does not exist
+    on .NET Framework), so its coverage gate proves the account dimming on Revit 2025/2026 and says
+    nothing about Revit 2024 — which ships from the same source against net48. This project builds
+    the REAL DimmableCheckedListBox for BOTH targets and measures the ink it paints, because the one
+    thing the whole 1.5.1.2 episode established is that a control can be wired perfectly and paint
+    nothing.
+
+    No ProjectReference and no Revit: Theme reaches UIThemeManager only by reflection and falls back
+    to KHBATCH_FORCE_THEME, and Icons is pure GDI+/WPF imaging, so the three product files are
+    LINKED and compiled here directly. Linked, not copied — a copy would drift, and a gate measuring
+    a copy measures nothing.
+
+    Run it for each target framework, plain and then with the inject flag (which must be detected
+    or the run fails); install\Verify-WindowConstruction.ps1 does exactly that. An XML comment
+    cannot carry a double dash, so the command lines live in that script, not here.
+
+    Deliberately NOT in KhBatchRunner.sln, same as ThemePreview: a broken dev tool must never block
+    the add-in's build.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net48;net8.0-windows</TargetFrameworks>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>DimInk</AssemblyName>
+    <RootNamespace>DimInk</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <!-- The 4.8 Developer Pack is not installed; this supplies the reference assemblies. -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <!-- Theme's Palette is a positional record, so net48 needs the init/record polyfills. Same two
+         packages, same versions, as KhBatchRunner's own net48 leg - the gate must compile the
+         product source the way the product does. -->
+    <PackageReference Include="PolySharp" Version="1.14.1" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\KhBatchRunner\UI\DimmableCheckedListBox.cs" Link="UI\DimmableCheckedListBox.cs" />
+    <Compile Include="..\..\src\KhBatchRunner\UI\Theme.cs" Link="UI\Theme.cs" />
+    <Compile Include="..\..\src\KhBatchRunner\UI\Icons.cs" Link="UI\Icons.cs" />
+  </ItemGroup>
+
+</Project>
