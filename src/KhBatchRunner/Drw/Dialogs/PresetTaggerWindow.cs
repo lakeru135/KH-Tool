@@ -86,6 +86,10 @@ internal sealed class PresetTaggerWindow : DrwToolWindow
         _ceilings = DrwControls.Check("Ceiling plans", false);
         _sections = DrwControls.Check("Sections", false);
         _elevations = DrwControls.Check("Elevations", false);
+        // Four boxes on one row: the usual 12 px gap pushed "Elevations" 5 px past the row at the
+        // window's minimum width (layout gate).
+        foreach (CheckBox c in new[] { _plans, _ceilings, _sections, _elevations })
+            c.Margin = new Padding(3, 4, 6, 4);
         _scope = new ScopePicker(this, data.ActiveView, data.SelectedViews, "All views whose name contains:",
             FormLayout.FlowRow(new Label { Text = "Covering:", AutoSize = true, Margin = new Padding(3, 7, 3, 3) },
                 _plans, _ceilings, _sections, _elevations));

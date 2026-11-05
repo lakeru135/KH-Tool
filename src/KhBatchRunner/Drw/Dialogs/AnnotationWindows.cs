@@ -161,7 +161,7 @@ internal sealed class DatumDimensionWindow : DrwToolWindow
         _extra = DrwControls.Check("Add one more every-grid / every-level string, to edit by hand", false);
         _everyOffset = DrwControls.Number(18, 0, 200, 1, 1);
         _overallOffset = DrwControls.Number(10, 0, 200, 1, 1);
-        _spacingFromType = DrwControls.Check("Space the strings by the dimension type's Dimension Line Snap Distance", false);
+        _spacingFromType = DrwControls.Check("Space the strings by the type's Dimension Line Snap Distance", false);
         _snap = new Label { AutoSize = true, Margin = new Padding(3, 6, 3, 3) };
         _side = DrwControls.Combo(Sides.Select(s => s.Text));
         _skip = DrwControls.Check("Skip views already dimensioned (grids and levels judged apart)", true);
@@ -444,7 +444,7 @@ internal sealed class StairAnnotationWindow : DrwToolWindow
         _dimOffset = DrwControls.Number(10, 0, 100, 1, 1);
         _dimSpacing = DrwControls.Number(8, 1, 50, 1, 1);
         _dimSnaps = snapDistancesMm;
-        _dimSnap = DrwControls.Check("Space the strings by the dimension type's Dimension Line Snap Distance", true);
+        _dimSnap = DrwControls.Check("Space the strings by the type's Dimension Line Snap Distance", true);
         _dimSnapValue = new Label { AutoSize = true, Margin = new Padding(3, 6, 3, 3) };
         _dimSnap.CheckedChanged += (_, _) => UpdateDimSpacing();
         _dimOverall = DrwControls.Check("Overall length and width strings", true);
@@ -620,7 +620,7 @@ internal sealed class SingleFontWindow : DrwToolWindow
         _heads = Tick("Grid / level / section heads, view titles", "HeadFamilies");
         _otherAnno = Tick("Other annotation families (generic annotations, symbols)", "OtherAnnotationFamilies");
         _modelFams = Tick("Model and detail families that contain text (slow)", "ModelFamilies");
-        _rename = DrwControls.Check("Replace the old font's name in type names (\"2.5mm Arial\" → \"2.5mm Tahoma\")", true);
+        _rename = DrwControls.Check("Rename types to the new font (\"2.5mm Arial\" → \"2.5mm Tahoma\")", true);
         _dryRun = DrwControls.Check("Only report what would change (change nothing)", false);
 
         var page = DrwControls.Page(

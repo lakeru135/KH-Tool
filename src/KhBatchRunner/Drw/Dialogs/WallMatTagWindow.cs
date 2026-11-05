@@ -64,7 +64,7 @@ internal sealed class WallMatTagWindow : DrwToolWindow
                 "Revit's API cannot link a new material tag to its material, so new tags show '?' until you touch " +
                 "them in Revit; they are left selected for that. Coarse views show no layers and are skipped."));
 
-        _perPiece = DrwControls.Check("One tag pair per wall piece between doors, windows and walls that meet it", false);
+        _perPiece = DrwControls.Check("One tag pair per wall piece between openings and meeting walls", false);
         _minPiece = DrwControls.Number(300, 0, 100000, 0, 50);
         var pieces = DrwControls.Group("Pieces",
             _perPiece,
@@ -73,7 +73,7 @@ internal sealed class WallMatTagWindow : DrwToolWindow
         _typeMark = new TextBox { Width = 160 };
         _typeName = new TextBox { Width = 160 };
         _minLength = DrwControls.Number(0, 0, 100000, 0, 100);
-        _seenOnly = DrwControls.Check("Only faces that are seen: skip where another wall or a column is against the face", true);
+        _seenOnly = DrwControls.Check("Seen faces only: skip a face with a wall or column against it", true);
         var walls = DrwControls.Group("Walls",
             _seenOnly,
             FormLayout.NoteLabel(this, "A finish drawn as its own wall: the faces where the two walls touch are not tagged, the " +
