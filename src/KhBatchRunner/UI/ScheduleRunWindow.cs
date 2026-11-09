@@ -32,6 +32,7 @@ public sealed class ScheduleRunWindow : Form
     private readonly ComboBox _relinkSetCombo;
     private readonly ComboBox _correctWorksetSetCombo;
     private readonly ComboBox _exportNwcSetCombo;
+    private readonly ComboBox _exportIfcSetCombo;
     private readonly ComboBox _fileLogSetCombo;
     private readonly ComboBox _dataExtractSetCombo;
     private readonly ComboBox _syncCombo;
@@ -133,6 +134,9 @@ public sealed class ScheduleRunWindow : Form
         _actionsScriptsList.Items.Add(new ActionOrScriptItem(
             Actions.ActionNames.ExportNwc, isScriptSet: false, isExportNwc: true,
             worksets: Actions.SyntheticActionPostures.ExportNwc));
+        _actionsScriptsList.Items.Add(new ActionOrScriptItem(
+            Actions.ActionNames.ExportIfcData, isScriptSet: false, isExportIfc: true,
+            worksets: Actions.SyntheticActionPostures.ExportIfcData));
         // Get File Log is a REST-only step (no model opened): it pulls the file log for the folders
         // of the "Get File Log set" chosen below. Add it as a checkable item like the others.
         _actionsScriptsList.Items.Add(new ActionOrScriptItem(
@@ -178,6 +182,11 @@ public sealed class ScheduleRunWindow : Form
         foreach (ExportNwcInputSet s in ExportNwcSetStore.LoadAll())
             _exportNwcSetCombo.Items.Add(new ExportNwcSetItem(s));
         if (_exportNwcSetCombo.Items.Count > 0) _exportNwcSetCombo.SelectedIndex = 0;
+
+        _exportIfcSetCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        foreach (ExportIfcInputSet s in ExportIfcSetStore.LoadAll())
+            _exportIfcSetCombo.Items.Add(new ExportIfcSetItem(s));
+        if (_exportIfcSetCombo.Items.Count > 0) _exportIfcSetCombo.SelectedIndex = 0;
 
         // Seeds the Get File Log step: WHICH FOLDERS as well as which files (only used when that
         // item is checked). The folders live in the set because a schedule that inferred them from
@@ -289,7 +298,26 @@ public sealed class ScheduleRunWindow : Form
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Cut model input set:", _cutModelSetCombo));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Internal Relink set:", _relinkSetCombo));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Correct Workset set:", _correctWorksetSetCombo));
-        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Export NWC options:", _exportNwcSetCombo));
+        // Export NWC and Export IFC + Data share ONE row. A separate row for IFC is exactly the kind
+        // of addition the 40/60 note above warns about: it starved the lists below their 240px floor
+        // at the dialog's minimum size, and no percent split cleared both sizes in the layout gate.
+        var exportRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 3, RowCount = 1, Margin = new Padding(0)
+        };
+        exportRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        exportRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        exportRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        _exportNwcSetCombo.Dock = DockStyle.Fill;
+        _exportIfcSetCombo.Dock = DockStyle.Fill;
+        exportRow.Controls.Add(_exportNwcSetCombo, 0, 0);
+        exportRow.Controls.Add(new Label
+        {
+            Text = "IFC + Data:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(9, 6, 6, 3)
+        }, 1, 0);
+        exportRow.Controls.Add(_exportIfcSetCombo, 2, 0);
+        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Export NWC options:", exportRow));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Get File Log set:", _fileLogSetCombo));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Get Data Extract set:", _dataExtractSetCombo));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Model treatment:", _syncCombo));
@@ -356,6 +384,7 @@ public sealed class ScheduleRunWindow : Form
         CheckListBehavior.SetEnabledOrBlank(_relinkSetCombo, checkedActions.Any(a => a.IsRelink));
         CheckListBehavior.SetEnabledOrBlank(_correctWorksetSetCombo, checkedActions.Any(a => a.IsCorrectWorkset));
         CheckListBehavior.SetEnabledOrBlank(_exportNwcSetCombo, checkedActions.Any(a => a.IsExportNwc));
+        CheckListBehavior.SetEnabledOrBlank(_exportIfcSetCombo, checkedActions.Any(a => a.IsExportIfc));
 
         CheckListBehavior.SetEnabledOrBlank(_fileLogSetCombo, checkedActions.Any(a => a.IsFileLog));
         CheckListBehavior.SetEnabledOrBlank(_dataExtractSetCombo, checkedActions.Any(a => a.IsDataExtract));
@@ -431,6 +460,8 @@ public sealed class ScheduleRunWindow : Form
             SelectByName(_correctWorksetSetCombo, job.CorrectWorksetSpec.Name, o => ((CorrectWorksetSetItem)o).Set.Name);
         if (job.ExportNwcSpec != null)
             SelectExportNwcSet(job.ExportNwcSpec.Name);
+        if (job.ExportIfcSpec != null)
+            SelectByName(_exportIfcSetCombo, job.ExportIfcSpec.Name, o => ((ExportIfcSetItem)o).Set.Name);
 
         if (job.FileLogInputs != null)
             SelectFileLogSet(job.FileLogInputs.Name);
@@ -621,6 +652,7 @@ public sealed class ScheduleRunWindow : Form
         if (_relinkSetCombo.Items.Count > 0) _relinkSetCombo.SelectedIndex = 0;
         if (_correctWorksetSetCombo.Items.Count > 0) _correctWorksetSetCombo.SelectedIndex = 0;
         if (_exportNwcSetCombo.Items.Count > 0) _exportNwcSetCombo.SelectedIndex = 0;
+        if (_exportIfcSetCombo.Items.Count > 0) _exportIfcSetCombo.SelectedIndex = 0;
         if (_fileLogSetCombo.Items.Count > 0) _fileLogSetCombo.SelectedIndex = 0;
         if (_dataExtractSetCombo.Items.Count > 0) _dataExtractSetCombo.SelectedIndex = 0;
         _syncCombo.SelectedIndex = 0; // Sync (default)
@@ -725,6 +757,18 @@ public sealed class ScheduleRunWindow : Form
             exportNwcSpec = es.Set.Clone();
         }
 
+        ExportIfcInputSet? exportIfcSpec = null;
+        if (actionsAndScripts.Any(a => a.IsExportIfc))
+        {
+            if (_exportIfcSetCombo.SelectedItem is not ExportIfcSetItem ei)
+            {
+                SetStatus("Select an Export IFC + Data options set (create one first in " +
+                          "NWD Helper → Export IFC + Data).");
+                return false;
+            }
+            exportIfcSpec = ei.Set.Clone();   // snapshotted, like Export NWC
+        }
+
         // Null unless the step is actually in the job — a set on a job that never pulls a file log
         // is a setting nobody can see the effect of.
         FileLogInputSet? fileLogInputs = null;
@@ -818,6 +862,7 @@ public sealed class ScheduleRunWindow : Form
             RelinkSpec = relinkSpec,
             CorrectWorksetSpec = correctWorksetSpec,
             ExportNwcSpec = exportNwcSpec,
+            ExportIfcSpec = exportIfcSpec,
             FileLogInputs = fileLogInputs,
             DataExtractInputs = dataExtractInputs,
             Completion = completion,
@@ -907,6 +952,14 @@ public sealed class ScheduleRunWindow : Form
         public override string ToString() => $"{Set.Name}  →  {Set.FolderPath}";
     }
 
+    private sealed class ExportIfcSetItem
+    {
+        public ExportIfcInputSet Set { get; }
+        public ExportIfcSetItem(ExportIfcInputSet set) => Set = set;
+        public override string ToString() =>
+            $"{Set.Name}  →  {Set.ScopeLabel}  →  {Set.OutputLabel}";
+    }
+
     private sealed class ExportNwcSetItem
     {
         public ExportNwcInputSet Set { get; }
@@ -963,6 +1016,7 @@ public sealed class ScheduleRunWindow : Form
         public bool IsInitiate { get; }
         public bool IsCutModel { get; }
         public bool IsExportNwc { get; }
+        public bool IsExportIfc { get; }
         public bool IsRelink { get; }
         public bool IsCorrectWorkset { get; }
         public bool IsFileLog { get; }
@@ -991,9 +1045,9 @@ public sealed class ScheduleRunWindow : Form
         public ActionOrScriptItem(string name, bool isScriptSet, bool isInitiate = false,
             bool isCutModel = false, bool isFileLog = false, string? refId = null,
             bool isExportNwc = false, bool isDataExtract = false, WorksetPosture? worksets = null,
-            bool isRelink = false, bool isCorrectWorkset = false)
+            bool isRelink = false, bool isCorrectWorkset = false, bool isExportIfc = false)
         {
-            IsRelink = isRelink; IsCorrectWorkset = isCorrectWorkset;
+            IsRelink = isRelink; IsCorrectWorkset = isCorrectWorkset; IsExportIfc = isExportIfc;
             Name = name; IsScriptSet = isScriptSet; IsInitiate = isInitiate; IsCutModel = isCutModel;
             IsFileLog = isFileLog; RefId = refId; IsExportNwc = isExportNwc; Worksets = worksets;
             IsDataExtract = isDataExtract;
@@ -1004,6 +1058,7 @@ public sealed class ScheduleRunWindow : Form
             : IsFileLog ? $"{Name}  (runs first — Forma file log, no model opened)"
             : IsDataExtract ? $"{Name}  (runs first — downloads Forma's extract, no model opened)"
             : IsExportNwc ? $"{Name}  (writes .nwc files)"
+            : IsExportIfc ? $"{Name}  (writes .ifc + report data)"
             : IsRelink ? $"{Name}  (relinks and syncs)"
             : IsCorrectWorkset ? $"{Name}  (checks or fixes worksets)"
             : Name;

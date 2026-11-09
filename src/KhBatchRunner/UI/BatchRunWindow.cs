@@ -27,6 +27,7 @@ public sealed class BatchRunWindow : Form
     private readonly ComboBox _initiateSetCombo;
     private readonly ComboBox _cutModelSetCombo;
     private readonly ComboBox _exportNwcSetCombo;
+    private readonly ComboBox _exportIfcSetCombo;
     private readonly ComboBox _syncCombo;
     private readonly ComboBox _completionCombo;
     private readonly TextBox _folderBox;
@@ -58,6 +59,9 @@ public sealed class BatchRunWindow : Form
 
     /// <summary>The Export NWC options the run should use, or null when the run does not export.</summary>
     public ExportNwcInputSet? SelectedExportNwcSpec { get; private set; }
+
+    /// <summary>The Export IFC + Data options the run should use, or null when the run does not export IFC.</summary>
+    public ExportIfcInputSet? SelectedExportIfcSpec { get; private set; }
 
     public string DestinationFolder { get; private set; } = "";
     public string ProjectLogName { get; private set; } = "";
@@ -140,6 +144,9 @@ public sealed class BatchRunWindow : Form
         // the "Export NWC options" combo below, exactly like Cut model.
         _actionsScriptsList.Items.Add(new ActionOrScriptItem(
             Actions.ExportNwcAction.DisplayName, isScriptSet: false, isExportNwc: true));
+        // Export IFC + Data — same synthetic shape as Export NWC, seeded by its own options combo.
+        _actionsScriptsList.Items.Add(new ActionOrScriptItem(
+            Actions.ExportIfcDataAction.DisplayName, isScriptSet: false, isExportIfc: true));
         foreach (ScriptSet s in ScriptSetStore.LoadAll())
             _actionsScriptsList.Items.Add(new ActionOrScriptItem(s.Name, isScriptSet: true));
 #endif
@@ -165,6 +172,11 @@ public sealed class BatchRunWindow : Form
         foreach (ExportNwcInputSet s in ExportNwcSetStore.LoadAll())
             _exportNwcSetCombo.Items.Add(new ExportNwcSetItem(s));
         if (_exportNwcSetCombo.Items.Count > 0) _exportNwcSetCombo.SelectedIndex = 0;
+
+        _exportIfcSetCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        foreach (ExportIfcInputSet s in ExportIfcSetStore.LoadAll())
+            _exportIfcSetCombo.Items.Add(new ExportIfcSetItem(s));
+        if (_exportIfcSetCombo.Items.Count > 0) _exportIfcSetCombo.SelectedIndex = 0;
         open.Mark("input sets");
 
         // A floor under each column, so the row cannot be squeezed into uselessness even if the
@@ -256,6 +268,7 @@ public sealed class BatchRunWindow : Form
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Initiate input set:", _initiateSetCombo));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Cut model input set:", _cutModelSetCombo));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Export NWC options:", _exportNwcSetCombo));
+        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Export IFC + Data options:", _exportIfcSetCombo));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Model treatment:", _syncCombo));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("When finished:", _completionCombo));
         FormLayout.AddAutoRow(root, completionNote);
@@ -339,6 +352,7 @@ public sealed class BatchRunWindow : Form
         CheckListBehavior.SetEnabledOrBlank(_initiateSetCombo, checkedActions.Any(a => a.IsInitiate));
         CheckListBehavior.SetEnabledOrBlank(_cutModelSetCombo, checkedActions.Any(a => a.IsCutModel));
         CheckListBehavior.SetEnabledOrBlank(_exportNwcSetCombo, checkedActions.Any(a => a.IsExportNwc));
+        CheckListBehavior.SetEnabledOrBlank(_exportIfcSetCombo, checkedActions.Any(a => a.IsExportIfc));
     }
 
     private void AddAdHocModels()
@@ -471,9 +485,21 @@ public sealed class BatchRunWindow : Form
             exportNwcSpec = es.Set.Clone();
         }
 
+        ExportIfcInputSet? exportIfcSpec = null;
+        if (actionsAndScripts.Any(a => a.IsExportIfc))
+        {
+            if (_exportIfcSetCombo.SelectedItem is not ExportIfcSetItem ei)
+            {
+                SetStatus("Select an Export IFC + Data options set (create one first in NWD Helper → Export IFC + Data).");
+                return;
+            }
+            exportIfcSpec = ei.Set.Clone();
+        }
+
         SelectedInitiateSpec = initiateSpec;
         SelectedCutModelSpec = cutModelSpec;
         SelectedExportNwcSpec = exportNwcSpec;
+        SelectedExportIfcSpec = exportIfcSpec;
         SelectedModelSetNames = modelSets;
         SelectedAdHocModels = new List<CloudModel>(_adHocModels);
         SelectedRunItems = actionsAndScripts.Select(a => (a.Name, a.IsScriptSet)).ToList();
@@ -522,16 +548,18 @@ public sealed class BatchRunWindow : Form
         public bool IsInitiate { get; }
         public bool IsCutModel { get; }
         public bool IsExportNwc { get; }
+        public bool IsExportIfc { get; }
         public ActionOrScriptItem(string name, bool isScriptSet, bool isInitiate = false,
-            bool isCutModel = false, bool isExportNwc = false)
+            bool isCutModel = false, bool isExportNwc = false, bool isExportIfc = false)
         {
             Name = name; IsScriptSet = isScriptSet; IsInitiate = isInitiate; IsCutModel = isCutModel;
-            IsExportNwc = isExportNwc;
+            IsExportNwc = isExportNwc; IsExportIfc = isExportIfc;
         }
         public override string ToString() =>
             IsScriptSet ? $"[Script Set] {Name}"
             : IsInitiate || IsCutModel ? $"{Name}  (publishes new cloud models)"
             : IsExportNwc ? $"{Name}  (writes .nwc files)"
+            : IsExportIfc ? $"{Name}  (writes .ifc + report data)"
             : Name;
     }
 
@@ -540,6 +568,14 @@ public sealed class BatchRunWindow : Form
         public InitiateInputSet Set { get; }
         public InitiateSetItem(InitiateInputSet set) => Set = set;
         public override string ToString() => $"{Set.Name}  →  {Set.FolderPath}";
+    }
+
+    private sealed class ExportIfcSetItem
+    {
+        public ExportIfcInputSet Set { get; }
+        public ExportIfcSetItem(ExportIfcInputSet set) => Set = set;
+        public override string ToString() =>
+            $"{Set.Name}  →  {Set.ScopeLabel}  →  {Set.OutputLabel}";
     }
 
     private sealed class ExportNwcSetItem

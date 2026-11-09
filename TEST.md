@@ -121,6 +121,25 @@ the point is to prove the ribbon → dialog → batch loop → CSV logger pipeli
 
 **Pass = the pipeline works.** Per-model failures on the dummy GUIDs are correct.
 
+## Export IFC + Data (human, Revit + a test model set)
+Build the converter first: in `tools\ifc2frag` run `npm ci`, `npm run build` and
+`.\fetch-node.ps1`, then build and install the add-in (Revit closed).
+
+1. **NWD Helper → Export IFC + Data.** Create a set: output folder `C:\BimReport-test`, view
+   filter blank (whole model), defaults otherwise. Save, pick a 1–2 model set, **Run**.
+2. Expect `C:\BimReport-test\runs\<stamp>\<model>\` with `<model>.ifc`, `elements.csv`, `rooms.csv`,
+   and `manifest-<pid>.json` beside the model folders. The tracking row says OK with element/room
+   counts; the model is not modified and no element is borrowed.
+3. Within a minute or two: `.frag` and `idmap.csv` appear next to each IFC, `convert-<pid>.json`
+   says `converted`, and `C:\BimReport-test\latest\index.json` lists the models.
+4. `history\rooms_gfa.csv` has one row per level per model; totals match a Revit room schedule.
+5. GUID check: `node src\verify-guids.mjs <model.ifc> <elements.csv>` (informational — the report
+   joins on ElementId through `idmap.csv`, which should list every exported building element).
+6. **Schedule Run** with the same set and "Close Revit when complete": Revit closes, then the
+   converter runs (see `runs\<stamp>\ifc2frag.log`: "waiting for process … exited").
+7. Delete `IfcToFrag\` from the add-in folder and run again: IFC/CSV still written, and
+   `ifc2frag.log` says the conversion was skipped.
+
 ## Installer (.exe)
 `install/Output/KhBatchRunner-Setup.exe` — **ONE installer for Revit 2024 + 2025 +
 2026, all-users, requires admin**. Build it with

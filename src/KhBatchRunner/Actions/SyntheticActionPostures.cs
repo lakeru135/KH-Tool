@@ -17,4 +17,7 @@ public static class SyntheticActionPostures
 
     /// <summary>Export NWC opens the worksets its view needs itself.</summary>
     public const WorksetPosture ExportNwc = WorksetPosture.PlansOwn;
+
+    /// <summary>Export IFC + Data opens the worksets its export view shows, like Export NWC.</summary>
+    public const WorksetPosture ExportIfcData = WorksetPosture.PlansOwn;
 }

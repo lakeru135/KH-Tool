@@ -47,6 +47,12 @@ One codebase builds three products, chosen with `-p:Edition=`:
 - **Parameter Helper, Mirror Check, Excel Link** (schedules to a workbook and back, as one undo
   step), **NWD Helper** (builds a parametric `.rfa` from an export made by the separate KH-NWD Tool
   Navisworks add-in).
+- **Export IFC + Data** (NWD Helper panel, Batch Run, Schedule Run). One IFC per model from a named
+  3D view, plus `elements.csv` and `rooms.csv`, in a dated `runs\<stamp>\` folder; the bundled
+  converter (`tools/ifc2frag`, That Open fragments) then writes `.frag` + `idmap.csv` and refreshes
+  `latest\` for a web viewer. Read-only: the export runs in a rolled-back transaction. Build the
+  converter with `npm ci && npm run build` and `fetch-node.ps1` in `tools/ifc2frag` before building
+  the add-in, or the action exports IFC/CSV only and says the conversion was skipped.
 - **KH-Tool AI Bridge** (`KhMcp`). An MCP server that lets an AI client run KH-Tool's own tools in
   the open Revit model. Read [SECURITY.md](SECURITY.md) before enabling **AI Code**.
 

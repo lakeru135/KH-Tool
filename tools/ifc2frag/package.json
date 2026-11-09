@@ -1,0 +1,23 @@
+{
+  "name": "kh-ifc2frag",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Converts the IFC files written by KH-Tool's Export IFC + Data action into That Open .frag files.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "convert": "node src/ifc2frag.mjs"
+  },
+  "dependencies": {
+    "@thatopen/fragments": "3.6.0",
+    "three": "0.186.1",
+    "web-ifc": "0.0.78"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

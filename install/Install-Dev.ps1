@@ -198,6 +198,18 @@ foreach ($name in "Collect-Diagnostics.cmd", "Collect-ScheduleDiagnostics.ps1") 
     Copy-Item (Join-Path $PSScriptRoot $name) $support -Force; Write-Host "  copied Support\$name"
 }
 
+# Export IFC + Data's converter (node.exe + bundled script + web-ifc wasm) lives in IfcToFrag\, which
+# the action resolves relative to the loaded dll. Present only when tools\ifc2frag was built.
+$ifcToFrag = Join-Path $bin "IfcToFrag"
+if (Test-Path $ifcToFrag) {
+    # Contents into an existing folder: copying the folder itself nests it (IfcToFrag\IfcToFrag)
+    # on every re-install after the first.
+    $ifcDest = Join-Path $payload "IfcToFrag"
+    New-Item -ItemType Directory -Force -Path $ifcDest | Out-Null
+    Copy-Item (Join-Path $ifcToFrag "*") $ifcDest -Recurse -Force
+    Write-Host "  copied IfcToFrag\"
+}
+
 # Debug builds ship test fixtures (e.g. Fixtures\seed.dxf for the DEV seed actions) next
 # to the dll; the actions resolve them relative to the loaded assembly, so mirror them.
 $fixtures = Join-Path $bin "Fixtures"

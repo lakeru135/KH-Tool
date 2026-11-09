@@ -28,7 +28,9 @@ $exactCase = @(
     'a1d138cf', 'pwUVAl2N', '799dbd08', 'a7d61ea9'
 )
 
-$skipDirs = '\\(bin|obj|\.git|\.vs|Output|node_modules)\\'
+# tools\ifc2frag\node and \dist are git-ignored downloads/builds of third-party code (node.exe's
+# own licence text names its upstream authors); like bin and node_modules they never reach the repo.
+$skipDirs = '\\(bin|obj|\.git|\.vs|Output|node_modules)\\|\\tools\\ifc2frag\\(node|dist)\\'
 $binary = @('.rfa', '.rvt', '.png', '.ico', '.dll', '.exe', '.pdb', '.zip', '.jpg', '.gif', '.xlsx')
 
 $files = Get-ChildItem $root -Recurse -File |

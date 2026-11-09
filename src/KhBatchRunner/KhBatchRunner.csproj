@@ -115,6 +115,19 @@
     <Copy SourceFiles="@(KhMcpLibs)" DestinationFolder="$(OutDir)KhMcp" SkipUnchangedFiles="true" />
   </Target>
 
+  <!-- The IFC-to-FRAG converter Export IFC + Data starts when a run ends (tools\ifc2frag). Copied
+       into IfcToFrag\ only when it has been built: `npm run build` there writes dist\, and
+       fetch-node.ps1 puts the pinned node.exe in node\. Without them the action still exports the
+       IFC and CSVs and says the conversion was skipped. Not DRW: the action is Full-edition only. -->
+  <Target Name="CopyIfcToFrag" AfterTargets="Build" Condition="'$(Edition)' != 'DRW'">
+    <ItemGroup>
+      <IfcToFragDist Include="..\..\tools\ifc2frag\dist\**\*" />
+      <IfcToFragNode Include="..\..\tools\ifc2frag\node\node.exe;..\..\tools\ifc2frag\node\node.LICENSE.txt" Condition="Exists('..\..\tools\ifc2frag\node\node.exe')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(IfcToFragDist)" DestinationFiles="@(IfcToFragDist->'$(OutDir)IfcToFrag\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(IfcToFragNode)" DestinationFolder="$(OutDir)IfcToFrag" SkipUnchangedFiles="true" />
+  </Target>
+
   <PropertyGroup>
     <RevitApiDir Condition="'$(RevitApiDir)' == ''">C:\Program Files\Autodesk\Revit $(RevitVersion)</RevitApiDir>
   </PropertyGroup>

@@ -865,6 +865,15 @@ public static class ScheduledRunner
                         "Job selects 'Export NWC' but carries no options snapshot.");
                 action = new ExportNwcAction(job.ExportNwcSpec, uiApp.Application.VersionNumber);
             }
+            else if (item.Name == ExportIfcDataAction.DisplayName)
+            {
+                // Same as Export NWC above: without this branch the registry fallback would run the
+                // first registered action instead and report success.
+                if (job.ExportIfcSpec is null)
+                    throw new InvalidOperationException(
+                        "Job selects 'Export IFC + Data' but carries no options snapshot.");
+                action = new ExportIfcDataAction(job.ExportIfcSpec);
+            }
             else if (item.Name == BatchInteropAction.DisplayName)
             {
                 // Built from the job's own snapshot, same reasoning as Initiate above — a

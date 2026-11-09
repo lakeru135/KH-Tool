@@ -797,6 +797,7 @@ internal static class Program
         yield return ("BatchInteropWindow", () => new BatchInteropWindow(PreviewPresets(), "2026"));
         yield return ("ScheduleInteropWindow", () => new ScheduleInteropWindow(client, "2026"));
         yield return ("ExportNwcWindow", () => new ExportNwcWindow());
+        yield return ("ExportIfcWindow", () => new ExportIfcWindow());
         yield return ("BatchLinkRvtWindow", () => new BatchLinkRvtWindow(PreviewPresets(), client));
         // 1.4.7 closes the hole the previous comment here admitted to. Relink and Correct Workset
         // "are still missing from this list, which is how a window skips both gates entirely" — and

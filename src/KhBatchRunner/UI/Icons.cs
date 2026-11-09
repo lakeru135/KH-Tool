@@ -649,6 +649,21 @@ internal static class Icons
         k.Arrow(k.P.Outline, 16, 27, 31, 27, 2.4f, 4f);
     });
 
+    public static BitmapSource ExportIfcData(IconPalette p, int size = 32) => Draw(p, size, k =>
+    {
+        // A page marked IFC over rows of data, with the same leaving arrow as Export NWC — the model
+        // out as an open file plus the tables the BIM report reads.
+        k.Sheet(2, 2, 18, 26);
+        k.Rows(5, 12, 16, 20, 24);
+        if (k.Detail)
+        {
+            using var font = new Font("Segoe UI", 7.5f, FontStyle.Bold, GraphicsUnit.Pixel);
+            using var accent = new SolidBrush(k.P.Accent);
+            k.G.DrawString("IFC", font, accent, 4.5f, 4.5f);
+        }
+        k.Arrow(k.P.Outline, 16, 27, 31, 27, 2.4f, 4f);
+    });
+
     public static BitmapSource NwdFamily(IconPalette p, int size = 32) => Draw(p, size, k =>
     {
         // An arrow into a family file holding the same blue object — Navisworks in, Revit family out.

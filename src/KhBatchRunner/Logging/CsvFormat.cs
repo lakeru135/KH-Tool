@@ -8,7 +8,9 @@ internal static class CsvFormat
     public static string Escape(string field)
     {
         field ??= "";
-        if (field.Contains(',') || field.Contains('"') || field.Contains('\n'))
+        // '\r' too: element parameters (Comments, Description) can hold a bare carriage return,
+        // which spreadsheet readers treat as a row break when it is not quoted.
+        if (field.Contains(',') || field.Contains('"') || field.Contains('\n') || field.Contains('\r'))
             return "\"" + field.Replace("\"", "\"\"") + "\"";
         return field;
     }

@@ -419,6 +419,14 @@ public class App : IExternalApplication
             "Read-only — the source models are never modified. Needs the Revit exporter that " +
             "installs with Navisworks.",
             Icons.ExportNwc);
+        // Export IFC + Data: batch, read-only — the IFC plus the CSVs the BIM report reads.
+        AddButton(nwdHelper, asm, "ExportIfcData", "Export\nIFC + Data",
+            typeof(Commands.ExportIfcCommand),
+            "Batch-export one IFC per model (from a named 3D view, or the whole model), plus " +
+            "elements.csv and rooms.csv, into a dated run folder. When the run ends the IFC is " +
+            "converted for the BIM report and the 'latest' folder is refreshed. Read-only — the " +
+            "source models are never modified.",
+            Icons.ExportIfcData);
 
         // Create Family from Navisworks: Navisworks selection → Revit family, not a batch action.
         // AlwaysAvailable like the rest: building the .rfa needs no open model — only loading and

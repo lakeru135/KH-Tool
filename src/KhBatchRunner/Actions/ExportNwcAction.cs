@@ -229,42 +229,12 @@ public sealed class ExportNwcAction : BatchActionBase
     /// <see cref="WorksetVisibilityRule"/>, which owns the decision and is checkable without a Revit.
     /// Unreadable means YES; see the note on <see cref="SelectWorksetsToOpen"/>.
     /// </summary>
-    private static bool ShowsWorkset(Document doc, View3D view, Workset w)
-    {
-        try
-        {
-            bool? fromView = Answer(view, w);
+    // Shared with Export IFC + Data since that action exists — see ViewWorksetPlanner.
+    private static bool ShowsWorkset(Document doc, View3D view, Workset w) =>
+        ViewWorksetPlanner.ShowsWorkset(doc, view, w);
 
-            ElementId templateId = view.ViewTemplateId;
-            // Autodesk.Revit.DB.View spelled out: System.Windows.Forms.View is an ENUM of the same
-            // name, and this assembly references both. Same trap as Form in the UI files.
-            bool? fromTemplate = templateId != ElementId.InvalidElementId &&
-                                 doc.GetElement(templateId) is Autodesk.Revit.DB.View t
-                ? Answer(t, w)
-                : (bool?)false;   // no template: nothing extra to union in
-
-            return WorksetVisibilityRule.Shows(w.IsVisibleByDefault, fromView, fromTemplate);
-        }
-        catch { return true; }
-
-        // Visible / Hidden / UseGlobalSetting → true / false / null.
-        static bool? Answer(Autodesk.Revit.DB.View v, Workset ws) => v.GetWorksetVisibility(ws.Id) switch
-        {
-            WorksetVisibility.Visible => true,
-            WorksetVisibility.Hidden => false,
-            _ => null,
-        };
-    }
-
-    private static List<WorksetId> AllUserWorksets(Document doc)
-    {
-        try
-        {
-            return new FilteredWorksetCollector(doc).OfKind(WorksetKind.UserWorkset)
-                .Select(w => w.Id).ToList();
-        }
-        catch { return new List<WorksetId>(); }
-    }
+    private static List<WorksetId> AllUserWorksets(Document doc) =>
+        ViewWorksetPlanner.AllUserWorksets(doc);
 
     public override void ConfigureOutput(string destinationFolder, string projectLogName)
     {
@@ -588,20 +558,10 @@ public sealed class ExportNwcAction : BatchActionBase
     /// exported, and a template called "NAVISWORKS" sitting alongside the view called "NAVISWORKS"
     /// would turn a working export into an error nobody could read.</para>
     /// </summary>
-    private static List<View3D> FindExportViews(Document doc, string contains)
-    {
-        IEnumerable<View3D> all = new FilteredElementCollector(doc)
-            .OfClass(typeof(View3D))
-            .Cast<View3D>()
-            .Where(v => !v.IsTemplate);
-
-        // Ordinal, not the culture comparer: Bird's panel says "(Case Sensitive)" and a view list
-        // is not prose. A culture-sensitive compare would also make the result depend on the PC.
-        if (!string.IsNullOrWhiteSpace(contains))
-            all = all.Where(v => v.Name.IndexOf(contains, StringComparison.Ordinal) >= 0);
-
-        return all.OrderBy(v => v.Name, StringComparer.Ordinal).ToList();
-    }
+    // Ordinal, not the culture comparer: Bird's panel says "(Case Sensitive)" and a view list is not
+    // prose. The rule itself is shared with Export IFC + Data — see ViewWorksetPlanner.FindViews.
+    private static List<View3D> FindExportViews(Document doc, string contains) =>
+        ViewWorksetPlanner.FindViews(doc, contains);
 
     /// <summary>
     /// The model's name for file-naming purposes. The batch opens cloud models detached, which

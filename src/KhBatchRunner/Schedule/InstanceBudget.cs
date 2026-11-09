@@ -362,8 +362,9 @@ internal static class InstanceBudget
     public static RunWeight WeightFor(ScheduledJob? job)
     {
         if (InteropStep.IsRequested(job)) return RunWeight.Interop;
-        if (job != null && job.ActionNames.Contains(Actions.ActionNames.ExportNwc))
-            return RunWeight.AllWorksets;
+        if (job != null && (job.ActionNames.Contains(Actions.ActionNames.ExportNwc) ||
+                            job.ActionNames.Contains(Actions.ActionNames.ExportIfcData)))
+            return RunWeight.AllWorksets;   // both open the worksets of a whole 3D view
         return RunWeight.Normal;
     }
 

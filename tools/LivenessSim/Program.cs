@@ -3248,6 +3248,61 @@ internal static class Program
             new ScheduledJob().ExportNwcSpec, (ExportNwcInputSet?)null);
 
         NwcNamingCases();
+        ExportIfcSpecCases();
+    }
+
+    /// <summary>
+    /// Export IFC + Data is a synthetic action like Export NWC, so it has the same two traps: an
+    /// option lost in Clone() changes a split-run child's export silently, and a job that loses its
+    /// snapshot in Duplicate() makes the runner throw for the whole group.
+    /// </summary>
+    private static void ExportIfcSpecCases()
+    {
+        Section("2.1  Export IFC + Data carries its options to wherever it runs");
+
+        var spec = new ExportIfcInputSet
+        {
+            Name = "Report",
+            ViewTitleContains = "IFC EXPORT",
+            OutputFolder = @"C:\sim\ifc",
+            Schema = IfcSchemaChoice.Ifc2x3CoordinationView2,
+            UseSharedCoordinates = false,
+            ExportCommonPropertySets = false,
+            ExportRevitPropertySets = true,
+            ExportBaseQuantities = true,
+            WriteElementsCsv = false,
+            WriteRoomsCsv = false,
+            ExtraParameters = new List<string> { "Mark", "Comments" },
+            ConvertToFrag = false,
+            KeepRunsDays = 3,
+        };
+
+        ExportIfcInputSet copy = spec.Clone();
+        Expect("a cloned IFC spec keeps its view filter", copy.ViewTitleContains, "IFC EXPORT");
+        Expect("…its schema", copy.Schema, IfcSchemaChoice.Ifc2x3CoordinationView2);
+        Expect("…its coordinate and property-set options",
+            !copy.UseSharedCoordinates && !copy.ExportCommonPropertySets && copy.ExportRevitPropertySets && copy.ExportBaseQuantities, true);
+        Expect("…its data-file switches", copy.WriteElementsCsv || copy.WriteRoomsCsv, false);
+        Expect("…its extra parameters", string.Join("|", copy.ExtraParameters), "Mark|Comments");
+        Expect("…as a separate list", ReferenceEquals(copy.ExtraParameters, spec.ExtraParameters), false);
+        Expect("…the conversion switch and retention", !copy.ConvertToFrag && copy.KeepRunsDays == 3, true);
+
+        var job = new ScheduledJob
+        {
+            Name = "Nightly report",
+            RunItems = new List<RunItem> { new(ActionNames.ExportIfcData, RunItemKind.Action) },
+            ExportIfcSpec = spec
+        };
+        ScheduledJob child = job.Duplicate();
+        Expect("a duplicated job still carries the IFC options", child.ExportIfcSpec != null, true);
+        Expect("…as a COPY", ReferenceEquals(child.ExportIfcSpec, spec), false);
+
+        Expect("an explicit IFC output folder is used", spec.ResolveOutputFolder(@"C:\run"), @"C:\sim\ifc");
+        Expect("an empty one falls back to the run's destination",
+            new ExportIfcInputSet().ResolveOutputFolder(@"C:\run"), @"C:\run");
+        Expect("a blank view filter reads as whole model", new ExportIfcInputSet().ScopeLabel, "whole model");
+        Expect("a job that does not export IFC carries no snapshot",
+            new ScheduledJob().ExportIfcSpec, (ExportIfcInputSet?)null);
     }
 
     /// <summary>

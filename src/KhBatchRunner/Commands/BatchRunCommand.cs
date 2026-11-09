@@ -44,6 +44,7 @@ public sealed class BatchRunCommand : IExternalCommand
                 InitiatePublish = window.SelectedInitiateSpec,
                 CutModelPublish = window.SelectedCutModelSpec,
                 ExportNwcSpec = window.SelectedExportNwcSpec,
+                ExportIfcSpec = window.SelectedExportIfcSpec,
                 Completion = window.SelectedCompletion,
                 Sync = window.SelectedSyncMode,
                 DestinationFolder = window.DestinationFolder,
@@ -152,6 +153,7 @@ public sealed class BatchRunCommand : IExternalCommand
                 InitiatePublish = window.SelectedInitiateSpec,
                 CutModelPublish = window.SelectedCutModelSpec,
                 ExportNwcSpec = window.SelectedExportNwcSpec,
+                ExportIfcSpec = window.SelectedExportIfcSpec,
                 Completion = BatchCompletion.CloseDocuments, // gated: parallel excludes "leave files open"
                 Sync = window.SelectedSyncMode,
                 DestinationFolder = window.DestinationFolder,
@@ -236,6 +238,15 @@ public sealed class BatchRunCommand : IExternalCommand
                 }
                 action = new ExportNwcAction(window.SelectedExportNwcSpec,
                                              uiApp.Application.VersionNumber);
+            }
+            else if (name == ExportIfcDataAction.DisplayName)
+            {
+                if (window.SelectedExportIfcSpec is null)
+                {
+                    TaskDialog.Show("Batch Run", "Export IFC + Data needs an options set to be selected.");
+                    return Result.Failed;
+                }
+                action = new ExportIfcDataAction(window.SelectedExportIfcSpec);
             }
             else
             {

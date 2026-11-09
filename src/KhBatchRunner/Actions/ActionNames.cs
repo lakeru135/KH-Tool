@@ -16,6 +16,7 @@ public static class ActionNames
     public const string InitiateToForma = "Initiate to Forma";
     public const string CutModel = "Cut model";
     public const string ExportNwc = "Export NWC";
+    public const string ExportIfcData = "Export IFC + Data";
     public const string InternalRelink = "Internal Relink";
     public const string CorrectWorkset = "Correct Workset";
 

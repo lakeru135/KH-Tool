@@ -170,6 +170,13 @@ public class ScheduledJob
     public Batch.ExportNwcInputSet? ExportNwcSpec { get; set; }
 
     /// <summary>
+    /// Options for the "Export IFC + Data" pass, snapshotted from a saved option set when that item
+    /// is checked. Null when the job exports no IFC. Mirrors <see cref="ExportNwcSpec"/> in every
+    /// respect, including being nullable and new so old job JSON loads unchanged.
+    /// </summary>
+    public Batch.ExportIfcInputSet? ExportIfcSpec { get; set; }
+
+    /// <summary>
     /// Inputs for the "Internal Relink" pass (Forma Batch Action), snapshotted when that item is checked.
     /// Null when the job doesn't relink. The token <see cref="Actions.RelinkLinksAction.DisplayName"/>
     /// also appears in <see cref="RunItems"/>; the runner scans the spec's target folders and builds
@@ -343,6 +350,7 @@ public class ScheduledJob
         // Not optional: a split run's children are built with Duplicate(), and a child that arrives
         // without its options snapshot cannot export anything and fails the whole group.
         ExportNwcSpec = ExportNwcSpec?.Clone(),
+        ExportIfcSpec = ExportIfcSpec?.Clone(),
         // Cloned for the same reason, though a chunk child never runs the step (ChunkLauncher
         // strips it): the parent's own list must not be aliased into a job it hands to a child.
         FileLogInputs = FileLogInputs?.Clone(),

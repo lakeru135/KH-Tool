@@ -92,11 +92,12 @@ public static class SettingsCatalog
         new("correctworkset",  "Correct Workset rules",   "CorrectWorksetSets", SettingsCategoryKind.SetFolder),
         new("batchlink",       "Batch Link RVT sets",     "BatchLinkSets",      SettingsCategoryKind.SetFolder),
         new("exportnwc",       "Export NWC option sets",  "ExportNwcSets",      SettingsCategoryKind.SetFolder),
-        new("filelog",         "Forma file-log sets",       "FileLogSets",        SettingsCategoryKind.SetFolder),
+        new("exportifc",       "Export IFC + Data option sets", "ExportIfcSets", SettingsCategoryKind.SetFolder),
+        new("filelog",        "Forma file-log sets",       "FileLogSets",        SettingsCategoryKind.SetFolder),
         new("dataextract",     "Forma data-extract sets",   "DataExtractSets",    SettingsCategoryKind.SetFolder),
         new("checksets",       "Model Checker checksets", "Checksets",          SettingsCategoryKind.SetFolder),
 
-        // The nine last-used snapshots. They sit at the ROOT of %AppData%\KhBatchRunner rather
+        // The ten last-used snapshots. They sit at the ROOT of %AppData%\KhBatchRunner rather
         // than inside their sets folder — deliberately, so they never appear as a set — which means
         // a bundle built by globbing "*Sets\*.json" would leave every one of them behind and a
         // restored PC would open each dialog blank.
@@ -106,6 +107,7 @@ public static class SettingsCatalog
         new("correctworkset-last", "Correct Workset — last used", "correctworkset-lastused.json", SettingsCategoryKind.SingleFile),
         new("batchlink-last",      "Batch Link RVT — last used",  "batchlink-lastused.json",      SettingsCategoryKind.SingleFile),
         new("exportnwc-last",      "Export NWC — last used",      "exportnwc-lastused.json",      SettingsCategoryKind.SingleFile),
+        new("exportifc-last",      "Export IFC + Data — last used", "exportifc-lastused.json",    SettingsCategoryKind.SingleFile),
         new("filelog-last",        "Forma file log — last used",    "filelog-lastused.json",        SettingsCategoryKind.SingleFile),
         new("dataextract-last",    "Forma data extract — last used", "dataextract-lastused.json",   SettingsCategoryKind.SingleFile),
         new("checkset-last",       "Checkset — last used",        "checkset-lastused.json",       SettingsCategoryKind.SingleFile),
