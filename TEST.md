@@ -1,32 +1,64 @@
-# KH Batch Script Runner — Install & Test Guide
+# KH-Tool — Build, Install & Test Guide
 
-Status as of 2026-07-02: **built, deployed to Revit 2026, and loaded** (see
-"Automated verification" below). The remaining steps need a human at Revit and,
-for the real run, live Forma access.
+Three layers of testing, cheapest first:
+
+1. **Offline gates** — no Revit needed; run before every commit that touches shared code.
+2. **Live feature matrix** — every feature against real models, driven headlessly; run before a
+   release and around any refactor (once on the old build, once on the new one, then diff).
+3. **Human click-through** — about 15 minutes; the part automation cannot honestly cover.
+
+The ribbon tab is **KH-Tool** (Full edition) or **DRW Helper** (DRW edition).
 
 ## Build
+Requires the .NET 8 SDK. Pass `-p:RevitApiFromNuGet=true` when that Revit year is not installed,
+**and for Revit 2026 whenever the installed Revit is 2026.5 or later** (its own API assemblies need
+a newer runtime than the .NET 8 SDK compiles against, and the build fails with `CS1705`).
+
 ```pwsh
-# default target Revit 2026
-dotnet build src\KhBatchRunner\KhBatchRunner.csproj -c Debug
-# (Revit 2025 target requires Revit 2025 installed locally for its RevitAPI.dll)
-dotnet build src\KhBatchRunner\KhBatchRunner.csproj -c Debug -p:RevitVersion=2025
+dotnet build src\KhBatchRunner\KhBatchRunner.csproj -c Release -p:RevitVersion=2026 -p:RevitApiFromNuGet=true
+dotnet build src\KhBatchRunner\KhBatchRunner.csproj -c Release -p:RevitVersion=2025 -p:RevitApiFromNuGet=true
+dotnet build src\KhBatchRunner\KhBatchRunner.csproj -c Release -p:RevitVersion=2024 -p:RevitApiFromNuGet=true
+dotnet build src\KhBatchRunner\KhBatchRunner.csproj -c Release -p:RevitVersion=2026 -p:Edition=DRW -p:RevitApiFromNuGet=true
+dotnet build src\KhBatchRunner\KhBatchRunner.csproj -c Release -p:RevitVersion=2026 -p:Edition=FullUnlimited -p:RevitApiFromNuGet=true
+dotnet build src\KhBatchController\KhBatchController.csproj
+dotnet build src\KhBatchLauncher\KhBatchLauncher.csproj
+dotnet build src\KhMcp\KhMcp.csproj
 ```
 
-## Manual install
-```pwsh
-# Close Revit first if the add-in is already loaded (the dll gets locked).
-.\install\Install-Dev.ps1 -RevitVersion 2026
-```
-Copies `KhBatchRunner.dll` + `.addin` (+ `.pdb`) into
-`%AppData%\Autodesk\Revit\Addins\2026\`. Start Revit → the **KH Batch** ribbon
-tab appears.
+A change is only "built" when the whole matrix is green: 2024 (net48), 2025, 2026; 2026 × DRW and
+FullUnlimited; Debug and Release for 2026 Full; Controller, Launcher, KhMcp and the `tools\*`
+projects.
 
-## Automated verification (already done, no Revit UI needed)
-- `dotnet build` succeeds, 0 errors.
-- Reflection check (MetadataLoadContext) confirms the `.addin` manifest maps to
-  real, public types: `KhBatchRunner.App : IExternalApplication` and
-  `KhBatchRunner.Commands.GetPhaseWorksetCommand : IExternalCommand`.
-- Deployed dll SHA-256 matches the built dll.
+## Dev install
+```pwsh
+# Close Revit first (the dll gets locked). Never force-close it.
+.\install\Install-Dev.ps1 -RevitVersion 2026 -Configuration Release
+.\install\Install-Dev.ps1 -RevitVersion 2026 -Configuration Release -Edition DRW
+# Put the machine-wide installed build back in charge:
+.\install\Install-Dev.ps1 -RevitVersion 2026 -RestoreInstalled
+```
+Copies the build into `%AppData%\Autodesk\Revit\Addins\<year>\` (DRW Helper into its own
+`DrwHelper\` subfolder). If the script stops on "KhMcp.exe is being used by another process", an
+AI client is running the kh-tool MCP proxy: end that session first. `KhMcp.exe` is not loaded by
+Revit, so the add-in itself is unaffected.
+
+## 1. Offline gates (no Revit UI needed)
+Run all of them; none may be edited to pass.
+
+```pwsh
+.\install\Verify-NoClientNames.ps1
+.\install\Verify-NoForcedRevitClose.ps1
+.\install\Verify-ConstrainedLanguageSafe.ps1
+.\install\Verify-WindowConstruction.ps1 -Configuration Release
+.\install\Verify-ActionPosture.ps1
+.\install\Verify-KhMcp.ps1
+dotnet run --project tools\LivenessSim
+dotnet run --project tools\BundleTest
+```
+(Set `$env:RevitApiFromNuGet='true'` first on a PC where the 2026 build needs it.)
+
+What the window and action gates prove, and why each exists:
+
 - **Every window is READABLE** — `install\Verify-WindowConstruction.ps1 -Configuration Release`.
   Beyond constructing each dialog and fault-injecting a modal message box, it now runs
   `tools\ThemePreview -- layout --inject`, which shows all 14 shared dialogs off-screen at their
@@ -104,24 +136,77 @@ tab appears.
   Interop calling partial models clean, both because a `virtual … => false` default answered the
   question for the author. An abstract member makes the compiler ask instead.*
 
-## Smoke test (human, no cloud needed) — DO THIS FIRST
-A `smoke-test.json` preset with placeholder all-zero GUIDs is already at
-`%AppData%\KhBatchRunner\Presets\`. Its models are *expected to fail to open* —
-the point is to prove the ribbon → dialog → batch loop → CSV logger pipeline.
+## 2. Live feature matrix
+Every feature, run against three kinds of model: **workshared cloud**, **non-workshared cloud**
+(single-user cloud model, no worksets) and **local files**. Revit 2026 gets the full matrix;
+Revit 2024 (net48) gets the starred rows. Revit 2025 is build-only unless it is installed.
 
-1. Start (or restart) Revit 2026. Confirm the **KH Batch** tab + **Get Phase &
-   Workset** button appear.
-2. Click the button → the run dialog opens.
-3. Confirm the **Model preset** dropdown lists `Sample Preset (edit me)` and the
-   **Export CSV log to** box has a default Desktop path.
-4. Click **Run**.
-5. Expect a summary dialog (Succeeded: 0, Failed: 2) and a CSV at the chosen path
-   with one error row per model, `Datetime` + `Model Name` columns populated.
-6. Run again → confirm the CSV **appends** (does not overwrite).
+Rules for a live run:
 
-**Pass = the pipeline works.** Per-model failures on the dummy GUIDs are correct.
+- Write only to a **disposable test location** you own. A model set that resolves anywhere else is
+  read-only or skipped.
+- The location's names and GUIDs never enter tracked files — `Verify-NoClientNames.ps1` scans the
+  whole working tree. Keep fixtures, job files and outputs outside the repo or under gitignored
+  `tmp\`. A workshared central's `_backup\` folder is binary that the gate reads as text, so
+  workshared fixtures must live **outside** the repo.
+- Never force-close Revit. A run that leaves Revit open is a failed run to inspect, not to kill.
+- For a refactor: run the matrix on the **old** build first and keep every CSV/XLSX/log as the
+  golden reference. A failure there is a pre-existing bug — write it down and do not fix it in
+  the refactor. Then install the new build, run again, and diff after masking timestamps, run
+  ids, durations and newly created model GUIDs. Every remaining difference is explained or fixed.
 
-## Export IFC + Data (human, Revit + a test model set)
+### Fixtures
+Small models are enough, but they need content for every check to report on: phases, user
+worksets, an RVT link between the models, an imported CAD and a linked CAD, a duplicate-wall
+warning, sheets with revisions, rooms, a design option set, two site locations and a type-mark
+text note. Build one seed, then save it as workshared and as non-workshared, locally and (through
+Initiate to Forma) in the cloud. Keep a pristine copy and restore it before every write row.
+Revit has no API to create design options; make that set by hand once in the seed.
+
+### Driving it without clicking
+- **Batch features** — write a `ScheduledJob` JSON (schema 3, specs snapshotted on the job, the
+  shape Schedule Run saves) into `%AppData%\KhBatchRunner\Scheduled\` and start Revit with
+  `KHBATCH_JOB=<job id>` and `KHBATCH_OWNER=Full`, as `install\Loop-TestScheduledRun.ps1` does.
+  With "Close Revit when complete" Revit exits by itself; read the tracking CSV, the detail CSVs
+  and the logs from the job's destination folder. `KHBATCH_DEV_ACTIONS=1` adds the seed action.
+- **Active-model features** — start Revit with `KHMCP_AUTOSTART=1` (and `KHMCP_CODE=1` only while
+  needed) and call the `kh-tool` MCP tools through `KhMcp.exe`, as `install\Verify-KhMcp.ps1`
+  does. Check each change with `export_view_png` or a read-only `run_code` query.
+- **Built-in self-tests** — `DRW_SELFTEST` + `DRW_SELFTEST_MODEL` (DRW edition),
+  `PARAMHELPER_SELFTEST` + `PARAMHELPER_SELFTEST_DIR`, and `KHBATCH_SELFTEST_V9` with the spike
+  variables.
+- **Batch Link RVT** has no schedule spec (it runs only from its own dialog), so drive the code
+  path behind its dialog through `run_code`.
+
+### The matrix
+
+| Area | Features | WS cloud | Non-WS cloud | Local |
+|---|---|---|---|---|
+| Model sets | Browse Forma, save set, folder set re-scan, GUID mapping check, access greying | ✔ | ✔ | ✔ |
+| Multi Model Check★ | Get Site Location & PBP, Get Phase & Workset, Get Design Option, Get Link Workset, Drawing Progress, Type Mark Text Note; CSV + XLSX matrices | ✔ | ✔ | ✔ |
+| Rebuild Report | Phase & Workset matrix, Design Option matrix, Batch Interop Summary, from the run's CSVs | n/a (files) | | |
+| Model Batch Action★ | Purge Import CAD, Isolate Warnings (dry run, then sync/save) | ✔ sync | ✔ save | ✔ save |
+| | Batch Link RVT (one workset / one per link), Correct Workset (Check, Fix) | ✔ | ✔ expect a clean "not workshared" outcome | ✔ |
+| | Batch Interop (needs the Autodesk Model Checker; else record SKIPPED) | ✔ | ✔ | ✔ |
+| Forma Batch Action | Initiate to Forma★, Cut Model, Internal Relink | ✔ | ✔ | source |
+| | Get File Log, Get Data Extract, Check Sheet Publish (REST only) | folder set | | |
+| NWD Helper | Export NWC (needs the Navisworks exporter; else SKIPPED), Export IFC + Data (+ `.frag`, `latest\`), Create rfa from NWD | ✔ | ✔ | ✔ |
+| Batch / Schedule Run★ | mixed sets + ad-hoc models, action → script → action order, a Dynamo script set, auto-split into parallel Revits, supervisor recovery, each completion mode, Task Scheduler register → on-demand run → delete, toast | ✔ | ✔ | ✔ |
+| Active model | Export Excel → edit → Import Excel, Formula Rules / Apply Now, Mirror Check, every MCP tool | ✔ | ✔ | ✔ |
+| DRW edition★ | Enlarge Room / Stair / Door & Window, Datum Dimension, Match Datums, Single Font, Stair Annotation, Preset Tagger, Wall Mat Tag, Sync View; DRW Batch Run presets | ✔ | ✔ | ✔ |
+| Other | Settings export/import round trip, About / update check, Controller + token broker, Diagnostic Report | — | — | — |
+
+For every write row check: the model reopens, the change is present, nothing is left borrowed
+(workshared), and a non-workshared cloud model was **saved** to the cloud rather than failing on a
+sync call. Record each row as PASS, FAIL or SKIPPED with the reason — never drop one silently.
+
+Things that make two runs differ without anything being wrong (mask them before diffing):
+wall-clock columns (`Datetime`, `Datetime (Finish)`, `Run`), the run stamp in file names, the
+Drawing Progress `[dp …ms …]` timing in the tracking Message, and row **order** in an auto-split
+run, where parallel Revits append to shared logs. Detail CSVs are per-day append files, so empty
+the job's destination folder before each run.
+
+### Export IFC + Data in detail
 Build the converter first: in `tools\ifc2frag` run `npm ci`, `npm run build` and
 `.\fetch-node.ps1`, then build and install the add-in (Revit closed).
 
@@ -139,6 +224,24 @@ Build the converter first: in `tools\ifc2frag` run `npm ci`, `npm run build` and
    converter runs (see `runs\<stamp>\ifc2frag.log`: "waiting for process … exited").
 7. Delete `IfcToFrag\` from the add-in folder and run again: IFC/CSV still written, and
    `ifc2frag.log` says the conversion was skipped.
+
+## 3. Human click-through (about 15 minutes)
+Automation constructs every dialog and runs every engine, but it does not click. In Revit 2026,
+once with the Full edition and once with DRW Helper:
+
+1. The ribbon tab and every panel appear; click each button once and confirm its dialog opens.
+2. Last-used values are restored in each dialog on the second open.
+3. In Cut Model, Initiate to Forma, Internal Relink, Correct Workset and Batch Link RVT: save an
+   input set, save it under a new name, overwrite it (confirm prompt), duplicate it, delete it.
+4. One interactive **Batch Run** with "leave files open".
+5. **Edit Sets → Edit Model Set** with no model open: the tree loads your hubs, a folder lists its
+   `.rvt` models, a saved set appears in every model-set list. If sign-in is missing, the dialog
+   names the reason.
+6. **GUID mapping, once per new hub:** open one model of a saved set normally and compare
+   `Document.GetCloudModelPath()` → `GetProjectGUID()` / `GetModelGUID()` with the `ProjectGuid` /
+   `ModelGuid` in the set's JSON under `%AppData%\KhBatchRunner\Presets\`. Trust batch runs on that
+   hub only after this matches. A hand-authored set (`src\KhBatchRunner\docs\sample-preset.json`)
+   is the fallback if the crawler mis-maps.
 
 ## Installer (.exe)
 `install/Output/KhBatchRunner-Setup.exe` — **ONE installer for Revit 2024 + 2025 +
@@ -159,29 +262,6 @@ isn't double-registered. Unsigned, so SmartScreen shows "Windows protected your 
 close it if the dll is locked).
 
 Verify after install: the "KH-Tool" ribbon tab appears in each installed Revit
-year, there is exactly one "KH Batch Script Runner" entry in Add/Remove Programs, any
-old per-year entries are gone, and uninstall removes the add-in from every year folder.
-
-## Crawler test (human + live Forma) — Browse Forma button
-The **Browse Forma** button (Phase 1–2) creates presets from a real folder browse.
-It works with **no model open** (Revit home screen), like Bird / Dynamo Multiplayer —
-the token comes from the signed-in session, not from any open document. If auth
-fails, the "no token" dialog now names the exact reason (e.g. "Not signed in").
-
-1. Be **signed in to Forma in desktop Revit** (same account that owns the models);
-   the add-in borrows the session token — no APS app needed.
-2. Click **Browse Forma** → the tree loads your hubs. Expand hub → project →
-   folders; select a folder to list its `.rvt` models on the right.
-3. Check models → **Add checked** → give the preset a name → **Save preset**.
-4. **VERIFY THE GUID MAPPING (first run only):** open one of those models in
-   Revit normally and read `Document.GetCloudModelPath()` →
-   `CloudPath.GetProjectGUID()` / `GetModelGUID()`; confirm they match the
-   `ProjectGuid`/`ModelGuid` the crawler wrote into the preset JSON. This is the
-   crawler's main risk — trust batch runs only after this matches once.
-5. Then run **Get Phase & Workset** against the saved preset; confirm real
-   phases/worksets rows and a clean error row for any model you can't access.
-
-### Hand-authored preset (fallback if the crawler mis-maps)
-Copy `src\KhBatchRunner\docs\sample-preset.json` to
-`%AppData%\KhBatchRunner\Presets\<name>.json` and fill each model's `Region`,
-`ProjectGuid`, `ModelGuid` from the `GetCloudModelPath()` values above.
+year, there is exactly one "KH Batch Script Runner for Autodesk Forma" entry in Add/Remove
+Programs, any old per-year entries are gone, and uninstall removes the add-in from every year
+folder. The gates rebuild the DLL without a version stamp, so build the installers **after** them.
