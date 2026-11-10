@@ -42,6 +42,8 @@ public sealed class CutModelWindow : Form
     // file name (same rule as model/script/Initiate sets).
     private string? _loadedSetName;
 
+    private readonly InputSetActions<CutModelInputSet> _sets;
+
     public ModelPreset? SelectedPreset { get; private set; }
 
     /// <summary>Everything the dialog collected, committed — target, site code, naming and log
@@ -77,6 +79,10 @@ public sealed class CutModelWindow : Form
         {
             if (_setCombo.SelectedItem is SetItem item) ApplyInputs(item.Set, loaded: true);
         };
+        _sets = new InputSetActions<CutModelInputSet>(this, _setCombo,
+            CutModelSetStore.LoadAll, CutModelSetStore.Exists, CutModelSetStore.Save, CutModelSetStore.Delete,
+            s => s.Name, s => s.Clone(), (s, name) => s.Name = name,
+            s => new SetItem(s), o => (o as SetItem)?.Set, Warn);
         var saveSet = new Button { Text = "Save set", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new System.Drawing.Size(80, 0) };
         saveSet.Click += (_, _) => SaveInputSet();
         var dupSet = new Button { Text = "Duplicate", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new System.Drawing.Size(80, 0) };
@@ -173,25 +179,9 @@ public sealed class CutModelWindow : Form
 
     // ---- input sets ------------------------------------------------------------
 
-    private void ReloadSetCombo(string? selectName)
-    {
-        _setCombo.Items.Clear();
-        foreach (CutModelInputSet set in CutModelSetStore.LoadAll())
-            _setCombo.Items.Add(new SetItem(set));
-        if (selectName != null) SelectSetByName(selectName);
-    }
+    private void ReloadSetCombo(string? selectName) => _sets.Reload(selectName);
 
-    private void SelectSetByName(string name)
-    {
-        for (int i = 0; i < _setCombo.Items.Count; i++)
-        {
-            if (((SetItem)_setCombo.Items[i]).Set.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
-            {
-                _setCombo.SelectedIndex = i;
-                return;
-            }
-        }
-    }
+    private void SelectSetByName(string name) => _sets.SelectByName(name);
 
     /// <summary>Fills every control from the given inputs. <paramref name="loaded"/> marks it as
     /// the currently-loaded NAMED set (rename-on-save semantics); false for last-used restores.</summary>
@@ -242,85 +232,14 @@ public sealed class CutModelWindow : Form
         ProjectLogName = _projectLogBox.Text.Trim()
     };
 
-    private void SaveInputSet()
-    {
-        string name = _setCombo.Text.Trim();
-        if (name.Length == 0)
-        {
-            Warn("Type a name for the input set (in the Input set box), then Save set.");
-            return;
-        }
-        if (string.IsNullOrEmpty(_folderUrn))
-        {
-            Warn("Pick a target Forma folder before saving the set.");
-            return;
-        }
-        bool renaming = _loadedSetName != null &&
-                        !name.Equals(_loadedSetName, StringComparison.OrdinalIgnoreCase);
-        if (CutModelSetStore.Exists(name) &&
-            (_loadedSetName == null || renaming))
-        {
-            if (MessageBox.Show(this, $"An input set named '{name}' already exists. Overwrite it?",
-                    Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
-                return;
-        }
+    private void SaveInputSet() => _sets.Save(ref _loadedSetName, BuildSnapshot,
+        () => string.IsNullOrEmpty(_folderUrn) ? "Pick a target Forma folder before saving the set." : null);
 
-        CutModelSetStore.Save(BuildSnapshot(name));
-        // Same rename rule as model/script/Initiate sets: saving a loaded set under a new name
-        // deletes the old file (a rename, not a silent duplicate).
-        if (renaming) CutModelSetStore.Delete(_loadedSetName!);
-        _loadedSetName = name;
-        ReloadSetCombo(selectName: name);
-    }
+    /// <summary>Forks the selected set to a new "&lt;name&gt; (copy)" and loads the copy — see
+    /// <see cref="InputSetActions{T}.Duplicate"/>.</summary>
+    private void DuplicateInputSet() => _sets.Duplicate();
 
-    /// <summary>
-    /// Forks the selected set to a new "&lt;name&gt; (copy)" and loads the copy.
-    ///
-    /// <para>Until 1.4.7 there was no way to do this. The combo is editable, so loading a set and
-    /// typing a new name LOOKS like a fork — but <see cref="SaveInputSet"/> reads that as a rename
-    /// and deletes the original file, so the obvious gesture destroyed the set being copied
-    /// from.</para>
-    /// </summary>
-    private void DuplicateInputSet()
-    {
-        if (_setCombo.SelectedItem is not SetItem item)
-        {
-            Warn("Select a saved input set to duplicate.");
-            return;
-        }
-        CutModelInputSet copy = item.Set.Clone();
-        copy.Name = SetDuplication.UniqueName(item.Set.Name, CutModelSetStore.LoadAll().Select(s => s.Name));
-        try
-        {
-            CutModelSetStore.Save(copy);
-        }
-        catch (Exception ex)
-        {
-            Warn("Could not duplicate the input set: " + ex.Message);
-            return;
-        }
-        // Selecting the new row raises SelectedIndexChanged -> ApplyInputs(loaded: true), which is
-        // what re-points _loadedSetName at the COPY. Leave it on the original and the very next
-        // "Save set" takes the rename branch and deletes the set just copied from.
-        ReloadSetCombo(selectName: copy.Name);
-    }
-
-    private void DeleteInputSet()
-    {
-        if (_setCombo.SelectedItem is not SetItem item)
-        {
-            Warn("Select a saved input set to delete.");
-            return;
-        }
-        if (MessageBox.Show(this, $"Delete input set '{item.Set.Name}'?",
-                Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
-            return;
-        CutModelSetStore.Delete(item.Set.Name);
-        if (_loadedSetName != null && _loadedSetName.Equals(item.Set.Name, StringComparison.OrdinalIgnoreCase))
-            _loadedSetName = null;
-        ReloadSetCombo(selectName: null);
-        _setCombo.Text = "";
-    }
+    private void DeleteInputSet() => _sets.Delete(ref _loadedSetName);
 
     private void PickTargetFolder()
     {
