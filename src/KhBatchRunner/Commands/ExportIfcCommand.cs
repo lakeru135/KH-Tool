@@ -27,13 +27,8 @@ public sealed class ExportIfcCommand : IExternalCommand
         UIApplication uiApp = commandData.Application;
 
         List<ModelPreset> presets = PresetStore.LoadAll();
-        if (presets.Count == 0)
-        {
-            TaskDialog.Show("Export IFC + Data",
-                "No model sets found.\n\n" +
-                "Create one first with Setting → Edit Model Set, then run Export IFC + Data.");
+        if (BatchCommandFlow.NoModelSets(presets, "Export IFC + Data", "Export IFC + Data"))
             return Result.Cancelled;
-        }
 
         using var dialog = new ExportIfcWindow();
         if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK || dialog.RunSpec is null)
@@ -71,19 +66,8 @@ public sealed class ExportIfcCommand : IExternalCommand
 
         if (setNote != null) Diagnostics.RunTrace.Mark(setNote);
 
-        var engine = new BatchEngine(uiApp, action, inputs.DestinationFolder, inputs.ProjectLogName);
-
-        try
-        {
-            // The modal message-loop runner, as Export NWC: cloud opens hang from an Idling event.
-            BatchRunnerWindow.RunModal(uiApp, engine, chosen, action.Name, BatchCompletion.CloseDocuments);
-        }
-        catch (Exception ex)
-        {
-            TaskDialog.Show("Export IFC + Data", $"Could not start the export: {ex.Message}");
-            return Result.Failed;
-        }
-
-        return Result.Succeeded;
+        // The modal message-loop runner, as Export NWC: cloud opens hang from an Idling event.
+        return BatchCommandFlow.RunModal(uiApp, action, chosen, inputs.DestinationFolder,
+            inputs.ProjectLogName, BatchCompletion.CloseDocuments, "Export IFC + Data", "the export");
     }
 }

@@ -50,13 +50,8 @@ public sealed class BatchInteropCommand : IExternalCommand
         }
 
         List<ModelPreset> presets = PresetStore.LoadAll();
-        if (presets.Count == 0)
-        {
-            TaskDialog.Show("KH Batch Script Runner",
-                "No model sets found.\n\n" +
-                "Create one first with Setting → Edit Model Set, then run this action.");
+        if (BatchCommandFlow.NoModelSets(presets, "KH Batch Script Runner", "this action"))
             return Result.Cancelled;
-        }
 
         using var dialog = new BatchInteropWindow(presets, year);
         if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)

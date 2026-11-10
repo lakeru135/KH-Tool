@@ -43,13 +43,8 @@ public sealed class ExportNwcCommand : IExternalCommand
         }
 
         List<ModelPreset> presets = PresetStore.LoadAll();
-        if (presets.Count == 0)
-        {
-            TaskDialog.Show("Export NWC",
-                "No model sets found.\n\n" +
-                "Create one first with Setting → Edit Model Set, then run Export NWC.");
+        if (BatchCommandFlow.NoModelSets(presets, "Export NWC", "Export NWC"))
             return Result.Cancelled;
-        }
 
         using var dialog = new ExportNwcWindow();
         if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK || dialog.RunSpec is null)
@@ -95,22 +90,10 @@ public sealed class ExportNwcCommand : IExternalCommand
 
         if (setNote != null) Diagnostics.RunTrace.Mark(setNote);
 
-        var engine = new BatchEngine(uiApp, action, inputs.DestinationFolder, inputs.ProjectLogName);
-
-        try
-        {
-            // The modal message-loop runner, not BatchIdlingDriver — these are usually Forma cloud
-            // models, and opening one from an Idling event hangs Revit's cloud-open UI. Inside it
-            // the export takes the ordinary background path (NeedsActiveDocument is false since
-            // 1.3.8.5), so each model is closed before the next one opens.
-            BatchRunnerWindow.RunModal(uiApp, engine, chosen, action.Name, BatchCompletion.CloseDocuments);
-        }
-        catch (Exception ex)
-        {
-            TaskDialog.Show("Export NWC", $"Could not start the export: {ex.Message}");
-            return Result.Failed;
-        }
-
-        return Result.Succeeded;
+        // The modal message-loop runner, not BatchIdlingDriver — these are usually Forma cloud
+        // models. Inside it the export takes the ordinary background path (NeedsActiveDocument is
+        // false since 1.3.8.5), so each model is closed before the next one opens.
+        return BatchCommandFlow.RunModal(uiApp, action, chosen, inputs.DestinationFolder,
+            inputs.ProjectLogName, BatchCompletion.CloseDocuments, "Export NWC", "the export");
     }
 }

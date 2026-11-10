@@ -30,26 +30,14 @@ public sealed class RelinkModelCommand : IExternalCommand
         UIApplication uiApp = commandData.Application;
 
         List<ModelPreset> presets = PresetStore.LoadAll();
-        if (presets.Count == 0)
-        {
-            TaskDialog.Show("KH Batch Script Runner",
-                "No model sets found.\n\n" +
-                "Create one first with Setting → Edit Model Set, then run Internal Relink.");
+        if (BatchCommandFlow.NoModelSets(presets, "KH Batch Script Runner", "Internal Relink"))
             return Result.Cancelled;
-        }
 
         var client = new DataManagementClient(new SessionTokenProvider());
 
-        RelinkModelWindow dialog;
-        try
-        {
-            dialog = new RelinkModelWindow(presets, client);
-        }
-        catch (Exception ex)
-        {
-            TaskDialog.Show("KH Batch Script Runner", "Could not open the Internal Relink dialog:\n\n" + ex.Message);
-            return Result.Failed;
-        }
+        RelinkModelWindow? dialog = BatchCommandFlow.TryCreateDialog(
+            () => new RelinkModelWindow(presets, client), "KH Batch Script Runner", "Internal Relink");
+        if (dialog == null) return Result.Failed;
         using var _dlg = dialog;
         if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
             return Result.Cancelled;
@@ -130,21 +118,9 @@ public sealed class RelinkModelCommand : IExternalCommand
             Schedule.RelinkSplitGuard.SelfLinkingHost(chosen.Models, targets));
         if (split.HasValue) return split.Value;
 
-        var engine = new BatchEngine(uiApp, action, inputs.DestinationFolder, inputs.ProjectLogName);
-
-        try
-        {
-            // Modal message-loop runner, NOT BatchIdlingDriver — hosts are Forma cloud models, and
-            // opening a cloud model from an Idling event hangs/crashes Revit's cloud-open UI.
-            BatchRunnerWindow.RunModal(uiApp, engine, chosen, action.Name, dialog.SelectedCompletion);
-        }
-        catch (Exception ex)
-        {
-            TaskDialog.Show("KH Batch Script Runner", $"Could not start Internal Relink: {ex.Message}");
-            return Result.Failed;
-        }
-
-        return Result.Succeeded;
+        // Modal message-loop runner, NOT BatchIdlingDriver — hosts are Forma cloud models.
+        return BatchCommandFlow.RunModal(uiApp, action, chosen, inputs.DestinationFolder,
+            inputs.ProjectLogName, dialog.SelectedCompletion, "KH Batch Script Runner", "Internal Relink");
     }
 
     /// <summary>

@@ -36,26 +36,14 @@ public sealed class BatchLinkRvtCommand : IExternalCommand
         UIApplication uiApp = commandData.Application;
 
         List<ModelPreset> presets = PresetStore.LoadAll();
-        if (presets.Count == 0)
-        {
-            TaskDialog.Show("Batch Link RVT",
-                "No model sets found.\n\n" +
-                "Create one first with Setting → Edit Model Set, then run Batch Link RVT.");
+        if (BatchCommandFlow.NoModelSets(presets, "Batch Link RVT", "Batch Link RVT"))
             return Result.Cancelled;
-        }
 
         var client = new DataManagementClient(new SessionTokenProvider());
 
-        BatchLinkRvtWindow dialog;
-        try
-        {
-            dialog = new BatchLinkRvtWindow(presets, client);
-        }
-        catch (Exception ex)
-        {
-            TaskDialog.Show("Batch Link RVT", "Could not open the Batch Link RVT dialog:\n\n" + ex.Message);
-            return Result.Failed;
-        }
+        BatchLinkRvtWindow? dialog = BatchCommandFlow.TryCreateDialog(
+            () => new BatchLinkRvtWindow(presets, client), "Batch Link RVT", "Batch Link RVT");
+        if (dialog == null) return Result.Failed;
         using var _dlg = dialog;
         if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
             return Result.Cancelled;
@@ -103,21 +91,10 @@ public sealed class BatchLinkRvtCommand : IExternalCommand
             return Result.Cancelled;
 
         var action = new BatchLinkRvtAction(inputs);
-        var engine = new BatchEngine(uiApp, action, inputs.DestinationFolder, inputs.ProjectLogName);
 
-        try
-        {
-            // Modal message-loop runner, NOT BatchIdlingDriver — hosts are Forma cloud models, and
-            // opening a cloud model from an Idling event hangs/crashes Revit's cloud-open UI.
-            BatchRunnerWindow.RunModal(uiApp, engine, chosen, action.Name, dialog.SelectedCompletion);
-        }
-        catch (Exception ex)
-        {
-            TaskDialog.Show("Batch Link RVT", $"Could not start Batch Link RVT: {ex.Message}");
-            return Result.Failed;
-        }
-
-        return Result.Succeeded;
+        // Modal message-loop runner, NOT BatchIdlingDriver — hosts are Forma cloud models.
+        return BatchCommandFlow.RunModal(uiApp, action, chosen, inputs.DestinationFolder,
+            inputs.ProjectLogName, dialog.SelectedCompletion, "Batch Link RVT", "Batch Link RVT");
     }
 
     /// <summary>The source list for the confirm dialog: names when there are few, counts when many.</summary>

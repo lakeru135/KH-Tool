@@ -33,16 +33,9 @@ public sealed class CorrectWorksetCommand : IExternalCommand
         List<ModelPreset> presets = PresetStore.LoadAll();
         var client = new DataManagementClient(new SessionTokenProvider());
 
-        CorrectWorksetWindow dialog;
-        try
-        {
-            dialog = new CorrectWorksetWindow(presets, client);
-        }
-        catch (Exception ex)
-        {
-            TaskDialog.Show("KH Batch Script Runner", "Could not open the Correct Workset dialog:\n\n" + ex.Message);
-            return Result.Failed;
-        }
+        CorrectWorksetWindow? dialog = BatchCommandFlow.TryCreateDialog(
+            () => new CorrectWorksetWindow(presets, client), "KH Batch Script Runner", "Correct Workset");
+        if (dialog == null) return Result.Failed;
         using var _dlg = dialog;
         if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
             return Result.Cancelled;
@@ -116,18 +109,8 @@ public sealed class CorrectWorksetCommand : IExternalCommand
             chosen.Models, dialog.SplitEnabled, action.Name, dialog.SelectedCompletion);
         if (split.HasValue) return split.Value;
 
-        var engine = new BatchEngine(uiApp, action, inputs.DestinationFolder, inputs.ProjectLogName);
-        try
-        {
-            // Modal message-loop runner, never Idling — hosts are typically Forma cloud models.
-            BatchRunnerWindow.RunModal(uiApp, engine, chosen, action.Name, dialog.SelectedCompletion);
-        }
-        catch (Exception ex)
-        {
-            TaskDialog.Show("KH Batch Script Runner", $"Could not start Correct Workset: {ex.Message}");
-            return Result.Failed;
-        }
-
-        return Result.Succeeded;
+        // Modal message-loop runner, never Idling — hosts are typically Forma cloud models.
+        return BatchCommandFlow.RunModal(uiApp, action, chosen, inputs.DestinationFolder,
+            inputs.ProjectLogName, dialog.SelectedCompletion, "KH Batch Script Runner", "Correct Workset");
     }
 }

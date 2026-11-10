@@ -30,24 +30,13 @@ public sealed class InitiateToFormaCommand : IExternalCommand
         UIApplication uiApp = commandData.Application;
 
         List<ModelPreset> presets = PresetStore.LoadAll();
-        if (presets.Count == 0)
-        {
-            TaskDialog.Show("KH Batch Script Runner",
-                "No model sets found.\n\n" +
-                "Create one first with Setting → Edit Model Set, then run Initiate to Forma.");
+        if (BatchCommandFlow.NoModelSets(presets, "KH Batch Script Runner", "Initiate to Forma"))
             return Result.Cancelled;
-        }
 
-        InitiateWindow dialog;
-        try
-        {
-            dialog = new InitiateWindow(presets, new DataManagementClient(new SessionTokenProvider()));
-        }
-        catch (Exception ex)
-        {
-            TaskDialog.Show("KH Batch Script Runner", "Could not open the Initiate dialog:\n\n" + ex.Message);
-            return Result.Failed;
-        }
+        InitiateWindow? dialog = BatchCommandFlow.TryCreateDialog(
+            () => new InitiateWindow(presets, new DataManagementClient(new SessionTokenProvider())),
+            "KH Batch Script Runner", "Initiate");
+        if (dialog == null) return Result.Failed;
         using var _dlg = dialog;
         if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
             return Result.Cancelled;
@@ -56,16 +45,8 @@ public sealed class InitiateToFormaCommand : IExternalCommand
         ModelPreset chosen = PresetResolver.Resolve(dialog.SelectedPreset!, out string? setNote);
         InitiateInputSet inputs = dialog.Inputs!;
 
-        PublishTarget target;
-        try
-        {
-            target = inputs.ToPublishTarget();
-        }
-        catch (Exception ex)
-        {
-            TaskDialog.Show("KH Batch Script Runner", $"Invalid publish target: {ex.Message}");
-            return Result.Failed;
-        }
+        PublishTarget? target = BatchCommandFlow.TryPublishTarget(() => inputs.ToPublishTarget());
+        if (target == null) return Result.Failed;
 
         // Preview + confirm — this publishes NEW cloud models, so make the destination explicit.
         var confirm = new TaskDialog("Batch Initiate to Forma")
@@ -104,22 +85,11 @@ public sealed class InitiateToFormaCommand : IExternalCommand
             chosen.Models, dialog.SplitEnabled, action.Name, dialog.SelectedCompletion);
         if (split.HasValue) return split.Value;
 
-        var engine = new BatchEngine(uiApp, action, inputs.DestinationFolder, inputs.ProjectLogName);
-
-        try
-        {
-            // Run through the modal message-loop runner, NOT BatchIdlingDriver. Initiate opens each
-            // SOURCE model (often a Forma cloud model) before publishing it; opening a cloud model
-            // from an Idling event is what left the "Open Model" dialog stuck here — the same bug
-            // the Multi Model Check/Action buttons had. See UI/BatchRunnerWindow.
-            BatchRunnerWindow.RunModal(uiApp, engine, chosen, action.Name, dialog.SelectedCompletion);
-        }
-        catch (Exception ex)
-        {
-            TaskDialog.Show("KH Batch Script Runner", $"Could not start Initiate: {ex.Message}");
-            return Result.Failed;
-        }
-
-        return Result.Succeeded;
+        // Modal message-loop runner, NOT BatchIdlingDriver. Initiate opens each SOURCE model (often
+        // a Forma cloud model) before publishing it; opening a cloud model from an Idling event is
+        // what left the "Open Model" dialog stuck here — the same bug the Multi Model Check/Action
+        // buttons had. See BatchCommandFlow.RunModal.
+        return BatchCommandFlow.RunModal(uiApp, action, chosen, inputs.DestinationFolder,
+            inputs.ProjectLogName, dialog.SelectedCompletion, "KH Batch Script Runner", "Initiate");
     }
 }
