@@ -1,5 +1,3 @@
-using System.Threading;
-
 using RunTrace = KhBatchRunner.Diagnostics.RunTrace;
 
 namespace KhBatchRunner.Schedule;

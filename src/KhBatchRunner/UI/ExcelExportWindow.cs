@@ -1,5 +1,4 @@
 using System.IO;
-using System.Windows.Forms;
 using KhBatchRunner.ExcelLink;
 using KhBatchRunner.Reporting;
 // Import types individually — `using Autodesk.Revit.DB;` would collide Revit's Form with WinForms'.

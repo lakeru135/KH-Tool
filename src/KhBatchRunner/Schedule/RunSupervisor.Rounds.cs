@@ -1,5 +1,4 @@
 using System.IO;
-using System.Threading;
 using KhBatchRunner.Logging;
 using KhBatchRunner.Presets;
 

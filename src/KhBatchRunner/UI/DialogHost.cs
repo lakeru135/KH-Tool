@@ -1,5 +1,3 @@
-using System.Windows.Forms;
-
 // WinForms and the Revit API both define TaskDialog; this add-in means Revit's.
 using TaskDialog = Autodesk.Revit.UI.TaskDialog;
 

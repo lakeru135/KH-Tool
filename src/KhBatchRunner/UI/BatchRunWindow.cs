@@ -1,11 +1,8 @@
-using System.Drawing;
 using System.IO;
-using System.Windows.Forms;
 using KhBatchRunner.Forma;
 using KhBatchRunner.Actions;
 using KhBatchRunner.Batch;
 using KhBatchRunner.Presets;
-using KhBatchRunner.Schedule;
 using KhBatchRunner.Scripts;
 
 namespace KhBatchRunner.UI;

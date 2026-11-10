@@ -1,4 +1,3 @@
-using System.Drawing;
 using System.Globalization;
 
 namespace KhBatchRunner.Drw.DoorWindow;

@@ -1,4 +1,3 @@
-using System.Linq;
 using System.Text.Json.Serialization;
 using KhBatchRunner.Batch;
 using KhBatchRunner.Presets;

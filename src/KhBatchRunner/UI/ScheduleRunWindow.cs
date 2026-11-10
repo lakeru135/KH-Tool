@@ -1,11 +1,8 @@
-using System.ComponentModel;
 using System.Drawing;
 using System.IO;
-using System.Windows.Forms;
 using KhBatchRunner.Forma;
 using KhBatchRunner.Actions;
 using KhBatchRunner.Batch;
-using KhBatchRunner.Presets;
 using KhBatchRunner.Schedule;
 using KhBatchRunner.Scripts;
 
@@ -72,7 +69,6 @@ public sealed class ScheduleRunWindow : Form
             b.Click += (_, _) => onClick();
             return b;
         }
-        Label Lbl(string text) => new() { Text = text, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 6, 3) };
 
         var open = new Diagnostics.OpenTimer("Schedule Run");
 

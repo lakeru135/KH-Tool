@@ -1,4 +1,3 @@
-using System.Drawing;
 using System.Windows.Forms;
 using KhBatchController.Auth;
 using KhBatchRunner.Batch;

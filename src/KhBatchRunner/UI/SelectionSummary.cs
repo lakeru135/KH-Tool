@@ -1,4 +1,3 @@
-using System.Linq;
 using KhBatchRunner.Presets;
 using KhBatchRunner.Schedule;
 

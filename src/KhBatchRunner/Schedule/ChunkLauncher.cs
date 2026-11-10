@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Linq;
 using KhBatchRunner.Batch;
 using KhBatchRunner.Logging;
 using KhBatchRunner.Presets;

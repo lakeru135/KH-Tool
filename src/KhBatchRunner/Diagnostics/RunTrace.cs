@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Threading;
 
 // MUST be the threading timer, not System.Windows.Forms.Timer (UseWindowsForms makes both visible).
 // A WinForms timer ticks on the UI message pump — precisely what a wedged Revit stops pumping — so

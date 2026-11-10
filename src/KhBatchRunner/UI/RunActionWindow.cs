@@ -1,5 +1,4 @@
 using System.IO;
-using System.Windows.Forms;
 using KhBatchRunner.Actions;
 using KhBatchRunner.Batch;
 using KhBatchRunner.Presets;

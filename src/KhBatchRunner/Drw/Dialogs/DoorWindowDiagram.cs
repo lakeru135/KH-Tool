@@ -1,6 +1,4 @@
-using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.Windows.Forms;
 using KhBatchRunner.Drw.DoorWindow;
 using KhBatchRunner.UI;
 
@@ -88,8 +86,6 @@ internal sealed class DoorWindowDiagram : DrwSampleDiagram
         Part.FloorGap => _p.FloorGapMm,
         _ => _p.DimOffsetMm
     };
-
-    private Color Ink(Part part, Color normal) => _active == part ? Red : normal;
 
     protected override void OnPaint(PaintEventArgs e)
     {

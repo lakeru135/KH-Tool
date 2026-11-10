@@ -1,4 +1,3 @@
-using System.Drawing;
 using System.Windows.Forms;
 using KhBatchRunner.Drw.Common;
 using KhBatchRunner.Drw.Enlarge;

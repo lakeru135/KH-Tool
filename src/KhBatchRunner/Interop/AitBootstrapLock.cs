@@ -1,5 +1,3 @@
-using System.Threading;
-
 namespace KhBatchRunner.Interop;
 
 /// <summary>

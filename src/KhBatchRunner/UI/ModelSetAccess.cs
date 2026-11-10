@@ -1,4 +1,3 @@
-using System.Windows.Forms;
 using KhBatchRunner.Forma;
 using KhBatchRunner.Presets;
 

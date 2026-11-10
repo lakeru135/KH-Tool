@@ -1,6 +1,5 @@
 using System.IO;
 using System.Globalization;
-using System.Threading;
 
 namespace KhBatchRunner.Schedule;
 

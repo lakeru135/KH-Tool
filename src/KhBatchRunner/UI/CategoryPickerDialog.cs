@@ -1,4 +1,3 @@
-using System.Windows.Forms;
 // NOT `using Autodesk.Revit.DB` — its Form type collides with System.Windows.Forms.Form.
 using BuiltInCategory = Autodesk.Revit.DB.BuiltInCategory;
 using LabelUtils = Autodesk.Revit.DB.LabelUtils;

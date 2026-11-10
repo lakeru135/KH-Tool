@@ -1,5 +1,3 @@
-using System.Linq;
-
 namespace KhBatchRunner.Logging;
 
 /// <summary>Shared CSV field-escaping used by both the tracking and detail loggers.</summary>

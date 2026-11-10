@@ -1,4 +1,3 @@
-using System.Linq;
 using KhBatchRunner.Forma;
 using KhBatchRunner.Auth;
 using KhBatchRunner.Batch;

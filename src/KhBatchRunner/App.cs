@@ -1,4 +1,3 @@
-using System.Drawing;
 using System.Reflection;
 using System.Windows.Media.Imaging;
 using Autodesk.Revit.UI;
@@ -32,7 +31,6 @@ public partial class App : IExternalApplication
     private const string BatchRunPanel = "Batch Run";
     private const string SchedulePanel = "Schedule";
     private const string FormaPanel = "Forma Batch Action";
-    private const string InteropPanel = "Interop";
     private const string ExcelPanel = "Excel Link";
     // Formula rules that write a calculated value into a real parameter (1.5.2). Full edition only.
     // Not "Schedule Helper": the Schedule panel next door is the Windows Task Scheduler runner.

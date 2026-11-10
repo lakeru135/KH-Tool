@@ -1,8 +1,6 @@
-using System.Drawing;
 using System.Reflection;
 using System.Windows.Media.Imaging;
 using Autodesk.Revit.UI;
-using Autodesk.Revit.UI.Events;
 using KhBatchRunner.Schedule;
 using KhBatchRunner.UI;
 

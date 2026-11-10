@@ -1,11 +1,8 @@
-﻿using System.Drawing;
-using System.IO;
-using System.Windows.Forms;
+﻿using System.IO;
 using KhBatchRunner.Forma;
 using KhBatchRunner.Actions;
 using KhBatchRunner.Batch;
 using KhBatchRunner.Interop;
-using KhBatchRunner.Presets;
 using KhBatchRunner.Schedule;
 
 namespace KhBatchRunner.UI;
@@ -64,7 +61,6 @@ public sealed class ScheduleInteropWindow : Form
             b.Click += (_, _) => onClick();
             return b;
         }
-        Label Lbl(string text) => new() { Text = text, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 6, 3) };
 
         // --- Schedule table (Interop-only jobs) ---
         _jobs = new ScheduleJobListPanel(

@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Windows.Forms;
 using KhBatchRunner.Interop;
 using KhBatchRunner.Reporting;
 

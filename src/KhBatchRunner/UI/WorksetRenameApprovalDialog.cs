@@ -1,4 +1,3 @@
-using System.Windows.Forms;
 using KhBatchRunner.Actions;
 
 namespace KhBatchRunner.UI;

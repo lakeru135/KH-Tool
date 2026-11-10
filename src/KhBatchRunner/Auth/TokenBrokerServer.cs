@@ -4,7 +4,6 @@ using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
-using System.Threading;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Events;
 

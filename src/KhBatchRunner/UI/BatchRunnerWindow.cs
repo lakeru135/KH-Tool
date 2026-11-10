@@ -1,7 +1,5 @@
-﻿using System.Diagnostics;
-using System.Drawing;
+﻿using System.Drawing;
 using System.Text;
-using System.Windows.Forms;
 using Autodesk.Revit.UI;
 using KhBatchRunner.Batch;
 using KhBatchRunner.Presets;

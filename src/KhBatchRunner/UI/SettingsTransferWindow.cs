@@ -1,6 +1,4 @@
-using System.Drawing;
 using System.Text;
-using System.Windows.Forms;
 using KhBatchRunner.Settings;
 
 namespace KhBatchRunner.UI;

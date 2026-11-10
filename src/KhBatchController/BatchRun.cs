@@ -1,5 +1,4 @@
 using System.IO;
-using System.Linq;
 using KhBatchController.Auth;
 using KhBatchRunner.Batch;
 using KhBatchRunner.Logging;
@@ -402,16 +401,5 @@ internal static class BatchRun
         }
         fields.Add(current.ToString());
         return fields.ToArray();
-    }
-
-    private static bool IsAlive(int pid)
-    {
-        try
-        {
-            using System.Diagnostics.Process p = System.Diagnostics.Process.GetProcessById(pid);
-            return !p.HasExited;
-        }
-        catch (ArgumentException) { return false; }
-        catch { return true; }
     }
 }

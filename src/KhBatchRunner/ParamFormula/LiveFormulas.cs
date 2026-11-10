@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Application = Autodesk.Revit.ApplicationServices.Application;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
