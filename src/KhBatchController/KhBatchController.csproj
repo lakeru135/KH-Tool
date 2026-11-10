@@ -66,9 +66,9 @@
     <!-- Batch: the job INPUTS (input sets, completion/sync options, folder scans) travel with a job
          and are pure data. Excluded are the six files that actually drive Revit documents — the
          engine, its drivers, the document cursor they share, and the dialog suppressor — which is
-         the real add-in/controller line. -->
+         the real add-in/controller line. BatchEngine is a partial class: all its files are excluded. -->
     <Compile Include="..\KhBatchRunner\Batch\**\*.cs" Link="Shared\Batch\%(RecursiveDir)%(Filename)%(Extension)"
-             Exclude="..\KhBatchRunner\Batch\ActiveModelRunner.cs;..\KhBatchRunner\Batch\BatchEngine.cs;..\KhBatchRunner\Batch\BatchIdlingDriver.cs;..\KhBatchRunner\Batch\DialogSuppressor.cs;..\KhBatchRunner\Batch\LeftOpenDocsActivator.cs;..\KhBatchRunner\Batch\ModelDocumentCursor.cs;..\KhBatchRunner\Batch\WorksetContentsProbe.cs" />
+             Exclude="..\KhBatchRunner\Batch\ActiveModelRunner.cs;..\KhBatchRunner\Batch\BatchEngine.cs;..\KhBatchRunner\Batch\BatchEngine.ActiveDocument.cs;..\KhBatchRunner\Batch\BatchEngine.Opening.cs;..\KhBatchRunner\Batch\BatchIdlingDriver.cs;..\KhBatchRunner\Batch\DialogSuppressor.cs;..\KhBatchRunner\Batch\LeftOpenDocsActivator.cs;..\KhBatchRunner\Batch\ModelDocumentCursor.cs;..\KhBatchRunner\Batch\WorksetContentsProbe.cs" />
 
     <!-- RunTrace is the shared launch/stage trail both processes append to; SelfTest is Revit-only. -->
     <Compile Include="..\KhBatchRunner\Diagnostics\RunTrace.cs" Link="Shared\Diagnostics\RunTrace.cs" />
@@ -79,8 +79,9 @@
          the part the controller should own. Three are excluded — ScheduledRunner (drives BatchEngine
          inside Revit), InteractiveSplit (a ribbon command's confirm-and-launch step, in Revit
          TaskDialogs and Results), and RelinkSplitGuard (plain data, but over RelinkTarget, which
-         lives with the Revit-only relink action). -->
-    <Compile Include="..\KhBatchRunner\Schedule\**\*.cs" Exclude="..\KhBatchRunner\Schedule\ScheduledRunner.cs;..\KhBatchRunner\Schedule\InteractiveSplit.cs;..\KhBatchRunner\Schedule\RelinkSplitGuard.cs" Link="Shared\Schedule\%(RecursiveDir)%(Filename)%(Extension)" />
+         lives with the Revit-only relink action). ScheduledRunner is a partial class: all its files
+         are excluded. -->
+    <Compile Include="..\KhBatchRunner\Schedule\**\*.cs" Exclude="..\KhBatchRunner\Schedule\ScheduledRunner.cs;..\KhBatchRunner\Schedule\ScheduledRunner.Lifecycle.cs;..\KhBatchRunner\Schedule\ScheduledRunner.JobPasses.cs;..\KhBatchRunner\Schedule\InteractiveSplit.cs;..\KhBatchRunner\Schedule\RelinkSplitGuard.cs" Link="Shared\Schedule\%(RecursiveDir)%(Filename)%(Extension)" />
 
     <Compile Include="..\KhBatchRunner\Settings\UserSettings.cs" Link="Shared\Settings\UserSettings.cs" />
 
