@@ -1,5 +1,5 @@
-using System.IO;
 using System.Text.Json;
+using KhBatchRunner.Batch;
 
 namespace KhBatchRunner.Presets;
 
@@ -10,66 +10,33 @@ namespace KhBatchRunner.Presets;
 /// </summary>
 public static class PresetStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNameCaseInsensitive = true
-    };
-
-    public static string PresetsDirectory
-    {
-        get
+    private static readonly NamedJsonSetStore<ModelPreset> Store = new(
+        "Presets", null,
+        new JsonSerializerOptions
         {
-            string dir = Settings.SettingsPaths.Folder("Presets");
-            Directory.CreateDirectory(dir);
-            return dir;
-        }
-    }
+            WriteIndented = true,
+            PropertyNameCaseInsensitive = true
+        },
+        p => p.Name,
+        BackFillId);
 
-    public static List<ModelPreset> LoadAll()
-    {
-        var presets = new List<ModelPreset>();
-        foreach (string file in Directory.EnumerateFiles(PresetsDirectory, "*.json"))
-        {
-            try
-            {
-                ModelPreset? preset = JsonSerializer.Deserialize<ModelPreset>(
-                    File.ReadAllText(file), JsonOptions);
-                if (preset != null && !string.IsNullOrWhiteSpace(preset.Name))
-                {
-                    // Back-fill a stable id for sets saved before ids existed, and persist it once so
-                    // it stays constant across loads (schedules reference the id, not the name).
-                    if (string.IsNullOrWhiteSpace(preset.Id))
-                    {
-                        preset.Id = Guid.NewGuid().ToString("N");
-                        try { File.WriteAllText(file, JsonSerializer.Serialize(preset, JsonOptions)); }
-                        catch { /* read-only dir etc. — id still stable within this session */ }
-                    }
-                    presets.Add(preset);
-                }
-            }
-            catch
-            {
-                // Skip malformed preset files rather than failing the whole command.
-            }
-        }
-        return presets.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
-    }
+    public static string PresetsDirectory => Store.SetsDirectory;
 
-    public static void Save(ModelPreset preset)
-    {
-        File.WriteAllText(PathFor(preset.Name), JsonSerializer.Serialize(preset, JsonOptions));
-    }
+    public static List<ModelPreset> LoadAll() => Store.LoadAll();
 
-    public static void Delete(string name)
-    {
-        string path = PathFor(name);
-        if (File.Exists(path)) File.Delete(path);
-    }
+    public static void Save(ModelPreset preset) => Store.Save(preset);
 
-    private static string PathFor(string name)
+    public static void Delete(string name) => Store.Delete(name);
+
+    /// <summary>
+    /// Back-fill a stable id for sets saved before ids existed; returning true makes the store
+    /// persist it once so it stays constant across loads (schedules reference the id, not the name).
+    /// A failed rewrite (read-only dir etc.) is ignored — the id still stays stable within this session.
+    /// </summary>
+    private static bool BackFillId(ModelPreset preset)
     {
-        string safeName = string.Join("_", name.Split(Path.GetInvalidFileNameChars()));
-        return Path.Combine(PresetsDirectory, safeName + ".json");
+        if (!string.IsNullOrWhiteSpace(preset.Id)) return false;
+        preset.Id = Guid.NewGuid().ToString("N");
+        return true;
     }
 }

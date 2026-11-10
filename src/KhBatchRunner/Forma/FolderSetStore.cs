@@ -1,5 +1,5 @@
-using System.IO;
 using System.Text.Json;
+using KhBatchRunner.Batch;
 
 namespace KhBatchRunner.Forma;
 
@@ -10,53 +10,21 @@ namespace KhBatchRunner.Forma;
 /// </summary>
 public static class FolderSetStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNameCaseInsensitive = true
-    };
-
-    public static string Directory_
-    {
-        get
+    // No last-used snapshot for folder sets (and so no Exists/SaveLastUsed/TryLoadLastUsed).
+    private static readonly NamedJsonSetStore<FolderSet> Store = new(
+        "FolderSets", null,
+        new JsonSerializerOptions
         {
-            string dir = Settings.SettingsPaths.Folder("FolderSets");
-            Directory.CreateDirectory(dir);
-            return dir;
-        }
-    }
+            WriteIndented = true,
+            PropertyNameCaseInsensitive = true
+        },
+        s => s.Name);
 
-    public static List<FolderSet> LoadAll()
-    {
-        var sets = new List<FolderSet>();
-        foreach (string file in System.IO.Directory.EnumerateFiles(Directory_, "*.json"))
-        {
-            try
-            {
-                FolderSet? set = JsonSerializer.Deserialize<FolderSet>(File.ReadAllText(file), JsonOptions);
-                if (set != null && !string.IsNullOrWhiteSpace(set.Name))
-                    sets.Add(set);
-            }
-            catch
-            {
-                // Skip a malformed file rather than failing the whole load.
-            }
-        }
-        return sets.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase).ToList();
-    }
+    public static string Directory_ => Store.SetsDirectory;
 
-    public static void Save(FolderSet set) =>
-        File.WriteAllText(PathFor(set.Name), JsonSerializer.Serialize(set, JsonOptions));
+    public static List<FolderSet> LoadAll() => Store.LoadAll();
 
-    public static void Delete(string name)
-    {
-        string path = PathFor(name);
-        if (File.Exists(path)) File.Delete(path);
-    }
+    public static void Save(FolderSet set) => Store.Save(set);
 
-    private static string PathFor(string name)
-    {
-        string safe = string.Join("_", name.Split(Path.GetInvalidFileNameChars()));
-        return Path.Combine(Directory_, safe + ".json");
-    }
+    public static void Delete(string name) => Store.Delete(name);
 }

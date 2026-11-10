@@ -1,4 +1,3 @@
-using System.IO;
 using System.Text.Json;
 
 namespace KhBatchRunner.Batch;
@@ -13,83 +12,28 @@ namespace KhBatchRunner.Batch;
 /// </summary>
 public static class InitiateSetStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNameCaseInsensitive = true
-    };
-
-    public static string SetsDirectory
-    {
-        get
+    private static readonly NamedJsonSetStore<InitiateInputSet> Store = new(
+        "InitiateSets", "initiate-lastused.json",
+        new JsonSerializerOptions
         {
-            string dir = Settings.SettingsPaths.Folder("InitiateSets");
-            Directory.CreateDirectory(dir);
-            return dir;
-        }
-    }
+            WriteIndented = true,
+            PropertyNameCaseInsensitive = true
+        },
+        s => s.Name);
 
-    private static string LastUsedPath => Settings.SettingsPaths.File("initiate-lastused.json");
+    public static string SetsDirectory => Store.SetsDirectory;
 
-    public static List<InitiateInputSet> LoadAll()
-    {
-        var sets = new List<InitiateInputSet>();
-        foreach (string file in Directory.EnumerateFiles(SetsDirectory, "*.json"))
-        {
-            try
-            {
-                InitiateInputSet? set =
-                    JsonSerializer.Deserialize<InitiateInputSet>(File.ReadAllText(file), JsonOptions);
-                if (set != null && !string.IsNullOrWhiteSpace(set.Name))
-                    sets.Add(set);
-            }
-            catch
-            {
-                // Skip malformed files rather than failing the whole command.
-            }
-        }
-        return sets.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase).ToList();
-    }
+    public static List<InitiateInputSet> LoadAll() => Store.LoadAll();
 
-    public static void Save(InitiateInputSet set) =>
-        File.WriteAllText(PathFor(set.Name), JsonSerializer.Serialize(set, JsonOptions));
+    public static void Save(InitiateInputSet set) => Store.Save(set);
 
-    public static void Delete(string name)
-    {
-        string path = PathFor(name);
-        if (File.Exists(path)) File.Delete(path);
-    }
+    public static void Delete(string name) => Store.Delete(name);
 
-    public static bool Exists(string name) => File.Exists(PathFor(name));
+    public static bool Exists(string name) => Store.Exists(name);
 
     /// <summary>Persists the given snapshot as the last-used inputs (best effort — a failed write never blocks a run).</summary>
-    public static void SaveLastUsed(InitiateInputSet snapshot)
-    {
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(LastUsedPath)!);
-            File.WriteAllText(LastUsedPath, JsonSerializer.Serialize(snapshot, JsonOptions));
-        }
-        catch { /* best effort */ }
-    }
+    public static void SaveLastUsed(InitiateInputSet snapshot) => Store.SaveLastUsed(snapshot);
 
     /// <summary>The last-used inputs, or null when none were saved yet (or the file is unreadable).</summary>
-    public static InitiateInputSet? TryLoadLastUsed()
-    {
-        try
-        {
-            if (!File.Exists(LastUsedPath)) return null;
-            return JsonSerializer.Deserialize<InitiateInputSet>(File.ReadAllText(LastUsedPath), JsonOptions);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static string PathFor(string name)
-    {
-        string safeName = string.Join("_", name.Split(Path.GetInvalidFileNameChars()));
-        return Path.Combine(SetsDirectory, safeName + ".json");
-    }
+    public static InitiateInputSet? TryLoadLastUsed() => Store.TryLoadLastUsed();
 }
