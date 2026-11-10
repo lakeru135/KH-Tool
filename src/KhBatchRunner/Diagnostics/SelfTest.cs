@@ -22,8 +22,6 @@ namespace KhBatchRunner.Diagnostics;
 /// </summary>
 public static partial class SelfTest
 {
-    private const string EnvVar = "KHBATCH_SELFTEST";
-
     /// <summary>Root of the local test models and probe output: %USERPROFILE%\KhBatchTest unless
     /// KHBATCH_TEST_ROOT says otherwise.</summary>
     internal static string TestRoot =>
@@ -53,9 +51,7 @@ public static partial class SelfTest
     private static IExternalEventHandler? _driverHandler;
     private static int _driverExpectedCount;
 
-    public static bool IsRequested(out string logPath)
-    {
-        // Newest gate first: a launcher that wants ONLY a freshly-built dev build to arm sets the
+    // Newest gate first: a launcher that wants ONLY a freshly-built dev build to arm sets the
         // highest version name — older editions in the same Addins folder (a stale lite edition or an
         // installed ProgramData build) know only an earlier name, so they stay dormant instead of
         // racing this build for the same log file and forcibly closing Revit mid-run (which
@@ -71,17 +67,31 @@ public static partial class SelfTest
         // 1.3.4 candidate that may still be installed alongside the development manifest.
         // V8 isolates the 1.5.1.2 Data Connector auth probe: every installed edition knows V7 at
         // most, so only the dev build carrying the probe arms and claims the log.
-        // V9 isolates the Interop profile/KHBATCH_TEST_ROOT build: DRW Helper is built from this
-        // same SelfTest and its installed copy knows V8, so a V8 launch would arm it too.
-        logPath = Environment.GetEnvironmentVariable("KHBATCH_SELFTEST_V9")
-                  ?? Environment.GetEnvironmentVariable("KHBATCH_SELFTEST_V8")
-                  ?? Environment.GetEnvironmentVariable("KHBATCH_SELFTEST_V7")
-                  ?? Environment.GetEnvironmentVariable("KHBATCH_SELFTEST_V6")
-                  ?? Environment.GetEnvironmentVariable("KHBATCH_SELFTEST_V5")
-                  ?? Environment.GetEnvironmentVariable("KHBATCH_SELFTEST_V4")
-                  ?? Environment.GetEnvironmentVariable("KHBATCH_SELFTEST_V3")
-                  ?? Environment.GetEnvironmentVariable("KHBATCH_SELFTEST_V2")
-                  ?? Environment.GetEnvironmentVariable(EnvVar) ?? "";
+    // V9 isolates the Interop profile/KHBATCH_TEST_ROOT build: DRW Helper is built from this
+    // same SelfTest and its installed copy knows V8, so a V8 launch would arm it too.
+    // The first variable that is SET (even to an empty string) wins, exactly like the former
+    // `??` chain; an empty or whitespace value then means "not requested".
+    private static readonly string[] SelfTestEnvVars =
+    {
+        "KHBATCH_SELFTEST_V9",
+        "KHBATCH_SELFTEST_V8",
+        "KHBATCH_SELFTEST_V7",
+        "KHBATCH_SELFTEST_V6",
+        "KHBATCH_SELFTEST_V5",
+        "KHBATCH_SELFTEST_V4",
+        "KHBATCH_SELFTEST_V3",
+        "KHBATCH_SELFTEST_V2",
+        "KHBATCH_SELFTEST",
+    };
+
+    public static bool IsRequested(out string logPath)
+    {
+        logPath = "";
+        foreach (string name in SelfTestEnvVars)
+        {
+            string? value = Environment.GetEnvironmentVariable(name);
+            if (value != null) { logPath = value; break; }
+        }
         return !string.IsNullOrWhiteSpace(logPath);
     }
 
