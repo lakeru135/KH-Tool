@@ -18,7 +18,7 @@
 ; which runs the builds and then ISCC.exe on this script.
 
 #define AppName "KH Batch Script Runner for Autodesk Forma"
-#define AppVersion "2.0.0.0"
+#define AppVersion "2.1.0.0"
 ; AppId (single-brace literal, matches [Setup]) + version, consumed by InstallerCommon.iss.
 #define InstAppId "{7E2C4D8A-3F51-4B9C-9E1D-2A6F0B4C8D31}"
 #define InstAppVersion AppVersion

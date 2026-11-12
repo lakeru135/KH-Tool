@@ -38,7 +38,7 @@ internal static class Product
 #endif
 
     // One version line for every edition: the public repository starts at 2.0.0.
-    public const string Version = "2.0.0.0";
+    public const string Version = "2.1.0.0";
     public const string Publisher = "Kanghun BIM";
 
     /// <summary>
@@ -97,7 +97,7 @@ internal static class Product
 
     private static DateTime ResolveBuiltInExpiryUtc()
     {
-        var fallback = new DateTime(2027, 2, 2, 0, 0, 0, DateTimeKind.Utc);    // 2.0.0.0: 90 days from 2026-11-04
+        var fallback = new DateTime(2027, 2, 10, 0, 0, 0, DateTimeKind.Utc);   // 2.1.0.0: 90 days from 2026-11-12
         try
         {
             foreach (var attr in typeof(Product).Assembly
@@ -118,6 +118,8 @@ internal static class Product
     /// <summary>Short "what's new" list shown on the About dialog. Keep the newest at the top.</summary>
 #if EDITION_DRW
     public const string Changelog =
+        "DRW Helper (2.1.0):\n" +
+        "• Version kept in step with KH-Tool 2.1.0; the DRW tools are unchanged.\n\n" +
         "DRW Helper (2.0.0) — first public release:\n" +
         "• Versions now follow the shared 2.x line of the public KH-Tool repository.\n" +
         "• Create: Enlarge Room, Enlarge Stair, Enlarge Door & Window.\n" +
@@ -126,6 +128,11 @@ internal static class Product
         "• Setting: Model Set, Batch Run, Sync View.";
 #else
     public const string Changelog =
+        "KH-Tool (2.1.0):\n" +
+        "• NWD Helper: new Export IFC + Data — exports IFC with element and room data as CSV. Runs " +
+        "from its own button, Batch Run or Schedule Run. The .frag conversion for web viewers needs " +
+        "the IFC-to-FRAG converter, which the installer does not include yet.\n" +
+        "• Internal code cleanup; no tool behaves differently.\n\n" +
         "KH-Tool (2.0.0) — first public release:\n" +
         "• Forma is now Autodesk Forma: every panel, window and message says Forma (formerly ACC).\n" +
         "• Cut Model and Internal Relink moved onto the Forma Batch Action panel.\n" +

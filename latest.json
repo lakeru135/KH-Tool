@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.0.0.0",
+  "latestVersion": "2.1.0.0",
   "downloadNote": "Download the installer from https://github.com/lakeru135/KH-Tool/releases/latest",
-  "allowedUntil": "2027-02-02",
+  "allowedUntil": "2027-02-10",
   "minVersion": null,
   "versionExpiry": {},
-  "message": "KH-Tool 2.0.0 is the first public release: KH Batch Script Runner for Autodesk Forma, with Cut Model, Internal Relink and Correct Workset on the batch panels."
+  "message": "KH-Tool 2.1.0 adds Export IFC + Data on the NWD Helper panel (IFC with element and room CSVs), plus an internal code cleanup that changes no behaviour."
 }

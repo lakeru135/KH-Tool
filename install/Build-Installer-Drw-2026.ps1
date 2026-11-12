@@ -20,7 +20,7 @@
 
 .NOTES
   Keep Product.Version (src\KhBatchRunner\Product.cs, EDITION_DRW branch) and AppVersion (DrwHelper-2026.iss) in step —
-  currently 2.0.0.0. DRW compiles the expiry gate out (NO_EXPIRY_GATE) until it has its own update manifest.
+  currently 2.1.0.0. DRW compiles the expiry gate out (NO_EXPIRY_GATE) until it has its own update manifest.
   Requires Inno Setup 6 (ISCC.exe); pass -Iscc to override its path.
 #>
 param(
