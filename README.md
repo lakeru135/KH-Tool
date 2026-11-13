@@ -4,6 +4,9 @@ Batch run, schedule and check Revit models stored in **Autodesk Forma** (formerl
 
 **Works with:** Revit 2024 · 2025 · 2026 · Autodesk Forma · BIM 360
 
+**New here?** Read the [KH-Tool handbook](https://claude.ai/artifact/CXSCchFSkXbCvrGTcaUpfw): install,
+first run, what each button does and what to do when a run goes wrong.
+
 KH-Tool is a C# Revit add-in from Kanghun BIM. It browses your Forma hubs and saves reusable **model
 sets**, either as a fixed list or as folders that are re-scanned at run time. It then **batch-runs**
 read-only checks, write actions, Forma operations and Dynamo `.dyn` script sets across many cloud
@@ -111,6 +114,7 @@ installers after them**.
 | `install\Verify-ConstrainedLanguageSafe.ps1` | Installed `.ps1` files run under locked-down PowerShell |
 | `install\Verify-WindowConstruction.ps1` | Every dialog constructs, stays readable at its minimum size, and round-trips a schedule job |
 | `install\Verify-ActionPosture.ps1` | No action compiles without declaring its workset posture |
+| `install\Verify-BatchFeatureContract.ps1 -Inject` | Every batch dialog shares the save-set row, the model-set list and the folder default (see CONTRIBUTING.md) |
 
 The first three also run from `Build-Installer.ps1`. Offline harnesses live in `tools/`:
 `LivenessSim` (run-splitting and liveness rules), `ThemePreview` (renders and layout-checks every

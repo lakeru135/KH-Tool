@@ -116,7 +116,7 @@ public sealed class FormaExtractWindow : Form
         _latestOnly = new CheckBox { Text = "Latest version only (much faster)", AutoSize = true, Margin = new Padding(3, 6, 3, 2) };
         _recurse = new CheckBox { Text = "Include subfolders", AutoSize = true, Margin = new Padding(3, 2, 3, 4) };
 
-        _folderBox = new TextBox { Text = Environment.GetFolderPath(Environment.SpecialFolder.Desktop) };
+        _folderBox = new TextBox { Text = Settings.UserSettings.DefaultDestinationFolder };
         var browse = new Button { Text = "Browse…", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(80, 0) };
         browse.Click += (_, _) => BrowseForFolder();
 
@@ -353,6 +353,7 @@ public sealed class FormaExtractWindow : Form
         string dest = set.DestinationFolder;
         // Remembered even when the set was never named, so reopening the dialog resumes where it
         // left off — the same courtesy Export NWC and Internal Relink already extend.
+        Settings.UserSettings.LastDestinationFolder = _folderBox.Text.Trim();
         FileLogSetStore.SaveLastUsed(set);
 
         DateTime stamp = DateTime.Now;

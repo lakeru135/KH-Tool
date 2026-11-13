@@ -26,15 +26,30 @@ public sealed class ExportIfcCommand : IExternalCommand
 
         UIApplication uiApp = commandData.Application;
 
+        // A runnable active document (a project model, not a family) lets the user run this on what
+        // is open right now instead of a model set — the same offer the simple Check/Action buttons
+        // make (see BatchActionCommandBase).
+        Document? activeDoc = uiApp.ActiveUIDocument?.Document;
+        string? activeName = (activeDoc != null && !activeDoc.IsFamilyDocument) ? activeDoc.Title : null;
+
         List<ModelPreset> presets = PresetStore.LoadAll();
-        if (BatchCommandFlow.NoModelSets(presets, "Export IFC + Data", "Export IFC + Data"))
+        if (activeName == null && BatchCommandFlow.NoModelSets(presets, "Export IFC + Data", "Export IFC + Data"))
             return Result.Cancelled;
 
-        using var dialog = new ExportIfcWindow();
+        using var dialog = new ExportIfcWindow(activeName);
         if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK || dialog.RunSpec is null)
             return Result.Cancelled;
 
         ExportIfcInputSet inputs = dialog.RunSpec;
+
+        // Active model: export the open document as it is open (see ExportNwcCommand). The runner
+        // calls ConfigureOutput and OnRunComplete around the one model, so the run folder, the
+        // manifest and the converter behave as they do for a one-model batch.
+        if (dialog.RunOnActiveModel)
+            return ActiveModelRunner.Run(uiApp, new ExportIfcDataAction(inputs),
+                    inputs.DestinationFolder, inputs.ProjectLogName)
+                ? Result.Succeeded : Result.Cancelled;
+
         ModelPreset? selected = presets.FirstOrDefault(p =>
             p.Name.Equals(dialog.SelectedModelSetName, StringComparison.OrdinalIgnoreCase));
         if (selected is null)

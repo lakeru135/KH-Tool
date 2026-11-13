@@ -31,6 +31,7 @@ public sealed class BatchLinkRvtWindow : Form
     private readonly TextBox _projectLogBox;
     private readonly ComboBox _completionCombo;
     private readonly Button _okButton;
+    private readonly CheckBox? _activeModelCheck;
 
     // Name of the currently-loaded input set (null for unsaved inputs) — rename-on-save semantics.
     private string? _loadedSetName;
@@ -45,7 +46,15 @@ public sealed class BatchLinkRvtWindow : Form
 
     public BatchCompletion SelectedCompletion { get; private set; } = BatchCompletion.CloseDocuments;
 
-    public BatchLinkRvtWindow(IReadOnlyList<ModelPreset> presets, DataManagementClient client)
+    /// <summary>True when the user chose to link into the model open in Revit rather than a host
+    /// model set — nothing is synced, saved or logged. Set only when the window was given an active
+    /// model name. Deliberately NOT part of the saved input set: a set saved with it on could not
+    /// be run as a batch.</summary>
+    public bool RunOnActiveModel { get; private set; }
+
+    /// <param name="activeModelName">Title of a runnable project model open in Revit, or null.</param>
+    public BatchLinkRvtWindow(IReadOnlyList<ModelPreset> presets, DataManagementClient client,
+        string? activeModelName = null)
     {
         _client = client;
 
@@ -141,7 +150,7 @@ public sealed class BatchLinkRvtWindow : Form
             AutoSize = true, Checked = true, Margin = new Padding(3, 4, 3, 4)
         };
 
-        _folderBox = new TextBox { Text = Environment.GetFolderPath(Environment.SpecialFolder.Desktop) };
+        _folderBox = new TextBox { Text = Settings.UserSettings.DefaultDestinationFolder };
         var browse = Small("Browse…", 80);
         browse.Click += (_, _) => BrowseForFolder();
 
@@ -168,6 +177,28 @@ public sealed class BatchLinkRvtWindow : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new System.Drawing.Size(80, 0)
         };
 
+        // --- Run on active model (links into the open document; no sync, no logs) ---
+        if (activeModelName != null)
+        {
+            var activeCheck = new CheckBox
+            {
+                Text = $"Run on active model only — “{activeModelName}” (links are added but NOT saved or synced)",
+                AutoSize = true,
+                Margin = new Padding(3, 2, 3, 2)
+            };
+            activeCheck.CheckedChanged += (_, _) =>
+            {
+                bool active = activeCheck.Checked;
+                _presetCombo.Enabled = !active;
+                _completionCombo.Enabled = !active;
+                _folderBox.Enabled = !active;
+                browse.Enabled = !active;
+                _projectLogBox.Enabled = !active;
+                _okButton.Text = active ? "Run on active" : "Run";
+            };
+            _activeModelCheck = activeCheck;
+        }
+
         Label note = FormLayout.NoteLabel(this,
             "Links every source model into every model of the host set, then syncs each host back to " +
             "its cloud central. \"One workset per link\" uses the same name Correct Workset expects, " +
@@ -179,6 +210,8 @@ public sealed class BatchLinkRvtWindow : Form
         var root = FormLayout.SingleColumn();
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Input set:", _setCombo, saveSet, dupSet, deleteSet));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Host model set:", _presetCombo));
+        if (_activeModelCheck != null)
+            FormLayout.AddAutoRow(root, _activeModelCheck);
         FormLayout.AddAutoRow(root, note);
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Link these models:", _sourcesList));
         FormLayout.AddAutoRow(root, FlowLeft(addForma, addLocal, removeSource));
@@ -216,6 +249,10 @@ public sealed class BatchLinkRvtWindow : Form
             if (!string.IsNullOrEmpty(lastUsed.Name))
                 SelectSetByName(lastUsed.Name);
         }
+
+        // With no saved model sets, linking into the open model is the only thing left to do.
+        if (_activeModelCheck != null && presets.Count == 0)
+            _activeModelCheck.Checked = true;
     }
 
     private static Button Small(string text, int minWidth) => new()
@@ -368,7 +405,9 @@ public sealed class BatchLinkRvtWindow : Form
 
     private void Commit()
     {
-        if (_presetCombo.SelectedItem is not PresetItem item)
+        bool active = _activeModelCheck?.Checked == true;
+        var item = _presetCombo.SelectedItem as PresetItem;
+        if (!active && item is null)
         {
             Warn("Select a host model set.");
             return;
@@ -388,12 +427,13 @@ public sealed class BatchLinkRvtWindow : Form
             Warn("Enter the workset keyword used to name each link's workset (e.g. LINK).");
             return;
         }
-        if (string.IsNullOrWhiteSpace(_folderBox.Text))
+        // The log fields are moot on the active model — nothing is written there.
+        if (!active && string.IsNullOrWhiteSpace(_folderBox.Text))
         {
             Warn("Choose a log destination folder.");
             return;
         }
-        if (string.IsNullOrWhiteSpace(_projectLogBox.Text))
+        if (!active && string.IsNullOrWhiteSpace(_projectLogBox.Text))
         {
             Warn("Enter a project log name.");
             return;
@@ -421,10 +461,12 @@ public sealed class BatchLinkRvtWindow : Form
             }
         }
 
-        SelectedPreset = item.Preset;
+        RunOnActiveModel = active;
+        SelectedPreset = active ? null : item!.Preset;
         Inputs = snapshot;
         SelectedCompletion = (_completionCombo.SelectedItem as CompletionItem)?.Completion
                              ?? BatchCompletion.CloseDocuments;
+        if (!active) Settings.UserSettings.LastDestinationFolder = _folderBox.Text.Trim();
         BatchLinkRvtSetStore.SaveLastUsed(Inputs);
     }
 

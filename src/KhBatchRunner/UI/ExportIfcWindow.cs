@@ -12,7 +12,9 @@ namespace KhBatchRunner.UI;
 public sealed class ExportIfcWindow : Form
 {
     private readonly ComboBox _setsCombo;
-    private readonly TextBox _nameBox;
+    private readonly InputSetActions<ExportIfcInputSet> _sets;
+    // Name of the currently-loaded options set (null for unsaved inputs) — rename-on-save semantics.
+    private string? _loadedSetName;
     private readonly TextBox _outputBox;
     private readonly TextBox _viewContainsBox;
     private readonly ComboBox _schemaCombo;
@@ -28,15 +30,24 @@ public sealed class ExportIfcWindow : Form
 
     private readonly ListBox _modelSetsList;
     private readonly TextBox _destBox;
+    private readonly TextBox _projectLogBox;
+    private readonly CheckBox? _activeModelCheck;
     private readonly Label _status;
 
     /// <summary>The options to run with, set only when the user chose Run. Null on Close.</summary>
     public ExportIfcInputSet? RunSpec { get; private set; }
 
-    /// <summary>The model set to run over, when <see cref="RunSpec"/> is set.</summary>
+    /// <summary>The model set to run over, when <see cref="RunSpec"/> is set and
+    /// <see cref="RunOnActiveModel"/> is false.</summary>
     public string SelectedModelSetName { get; private set; } = "";
 
-    public ExportIfcWindow()
+    /// <summary>True when the user chose to export the model open in Revit rather than a model set.
+    /// Set only when the window was given an active model name.</summary>
+    public bool RunOnActiveModel { get; private set; }
+
+    /// <param name="activeModelName">Title of a runnable project model open in Revit, or null when
+    /// there is none — the "run on active model" checkbox is offered only with one.</param>
+    public ExportIfcWindow(string? activeModelName = null)
     {
         Text = "Export IFC + Data — options and run";
         StartPosition = FormStartPosition.CenterScreen;
@@ -58,10 +69,21 @@ public sealed class ExportIfcWindow : Form
             "refreshed; on a scheduled run that happens after Revit has closed. Nothing is saved back " +
             "to the model.");
 
-        _setsCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
-        _setsCombo.SelectedIndexChanged += (_, _) => LoadSelectedSet();
+        // Editable, like the "Input set:" combo of Cut model and its siblings: the name typed here
+        // is the name Save set saves under. This used to be a fixed list plus a separate "Set name"
+        // box, where saving overwrote without asking and deleting did not confirm — see
+        // InputSetActions for the rules every saved-set row now shares.
+        _setsCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown };
+        _setsCombo.SelectedIndexChanged += (_, _) =>
+        {
+            if (_setsCombo.SelectedItem is SetOption opt) ApplyInputs(opt.Set, loaded: true);
+        };
+        _sets = new InputSetActions<ExportIfcInputSet>(this, _setsCombo,
+            ExportIfcSetStore.LoadAll, ExportIfcSetStore.Exists, ExportIfcSetStore.Save, ExportIfcSetStore.Delete,
+            s => s.Name, s => s.Clone(), (s, name) => s.Name = name,
+            s => new SetOption(s), o => (o as SetOption)?.Set, SetStatus,
+            noun: "options set", boxLabel: "Saved options set");
 
-        _nameBox = new TextBox();
         _outputBox = new TextBox();
         var browse = new Button { Text = "Browse…", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
         browse.Click += (_, _) => PickFolder(_outputBox);
@@ -106,11 +128,8 @@ public sealed class ExportIfcWindow : Form
             onSnapshotReady: RefreshModelSets);
         RefreshModelSets();
 
-        _destBox = new TextBox
-        {
-            Text = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "KhBatchRunner")
-        };
+        _destBox = new TextBox { Text = Settings.UserSettings.DefaultDestinationFolder };
+        _projectLogBox = new TextBox { Text = "Export IFC + Data" };
         var destBrowse = new Button { Text = "Browse…", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
         destBrowse.Click += (_, _) => PickFolder(_destBox);
 
@@ -118,7 +137,7 @@ public sealed class ExportIfcWindow : Form
         saveBtn.Click += (_, _) => SaveSet();
         var dupBtn = new Button { Text = "Duplicate", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
         dupBtn.Click += (_, _) => DuplicateSet();
-        var deleteBtn = new Button { Text = "Delete set", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
+        var deleteBtn = new Button { Text = "Delete", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
         deleteBtn.Click += (_, _) => DeleteSet();
 
         var runBtn = new Button
@@ -129,25 +148,45 @@ public sealed class ExportIfcWindow : Form
         runBtn.Click += (_, _) => Commit();
         var cancelBtn = new Button
         {
-            Text = "Close", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Text = "Cancel", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
             MinimumSize = new Size(90, 0), DialogResult = DialogResult.Cancel
         };
+
+        // --- Run on active model (one export of what is open now: no model set, no CSV log) ---
+        if (activeModelName != null)
+        {
+            var activeCheck = new CheckBox
+            {
+                Text = $"Run on active model only — “{activeModelName}” (exports what is open now; no CSV log)",
+                AutoSize = true,
+                Margin = new Padding(3, 2, 3, 2)
+            };
+            activeCheck.CheckedChanged += (_, _) =>
+            {
+                bool active = activeCheck.Checked;
+                _modelSetsList.Enabled = !active;
+                _projectLogBox.Enabled = !active;
+                runBtn.Text = active ? "Run on active" : "Run";
+            };
+            _activeModelCheck = activeCheck;
+        }
 
         _status = new Label { AutoSize = true, Margin = new Padding(3, 6, 3, 3) };
 
         FormLayout.AddAutoRow(root, note);
-        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Saved options set:", _setsCombo));
-        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Set name:", _nameBox));
+        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Saved options set:", _setsCombo, saveBtn, dupBtn, deleteBtn));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Output folder:", _outputBox, browse));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("3D view title contains:", viewRow));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("IFC version:", _schemaCombo));
         FormLayout.AddAutoRow(root, grid);
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Extra parameters (comma separated):", _extraParamsBox));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Keep runs for:", keepRow));
-        FormLayout.AddAutoRow(root, FormLayout.FlowRow(saveBtn, dupBtn, deleteBtn));
         FormLayout.AddAutoRow(root, new Label { Text = "Model set to run over:", AutoSize = true });
         FormLayout.AddFillRow(root, _modelSetsList, 100);
+        if (_activeModelCheck != null)
+            FormLayout.AddAutoRow(root, _activeModelCheck);
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Export CSV log to:", _destBox, destBrowse));
+        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Project log name:", _projectLogBox));
         FormLayout.AddAutoRow(root, _status);
         FormLayout.AddAutoRow(root, FormLayout.FlowRow(runBtn, cancelBtn));
 
@@ -163,28 +202,30 @@ public sealed class ExportIfcWindow : Form
             Math.Max(ClientSize.Width, root.PreferredSize.Width), root.PreferredSize.Height);
         MinimumSize = Size;
 
-        ReloadSets(ExportIfcSetStore.TryLoadLastUsed()?.Name);
+        // Populate the saved sets and restore the last committed inputs (which also selects the
+        // matching set if the last run came from one) — the same restore the other set windows do.
+        _sets.Reload(selectName: null);
+        ExportIfcInputSet? lastUsed = ExportIfcSetStore.TryLoadLastUsed();
+        if (lastUsed != null)
+        {
+            ApplyInputs(lastUsed, loaded: false);
+            if (!string.IsNullOrEmpty(lastUsed.Name))
+                _sets.SelectByName(lastUsed.Name); // fires ApplyInputs(loaded: true) if it still exists
+        }
+
+        // With no saved model sets, exporting the open model is the only thing this dialog can do.
+        if (_activeModelCheck != null && _modelSetsList.Items.Count == 0)
+            _activeModelCheck.Checked = true;
     }
 
-    private void ReloadSets(string? select)
+    /// <summary>Fills every control from the given inputs. <paramref name="loaded"/> marks it as
+    /// the currently-loaded NAMED set (rename-on-save semantics); false for last-used restores.</summary>
+    private void ApplyInputs(ExportIfcInputSet s, bool loaded)
     {
-        _setsCombo.Items.Clear();
-        foreach (ExportIfcInputSet s in ExportIfcSetStore.LoadAll())
-            _setsCombo.Items.Add(new SetOption(s));
+        _loadedSetName = loaded && !string.IsNullOrEmpty(s.Name) ? s.Name : null;
 
-        if (_setsCombo.Items.Count == 0) return;
-        for (int i = 0; i < _setsCombo.Items.Count && select != null; i++)
-            if (((SetOption)_setsCombo.Items[i]).Set.Name.Equals(select, StringComparison.OrdinalIgnoreCase))
-            { _setsCombo.SelectedIndex = i; return; }
-        _setsCombo.SelectedIndex = 0;
-    }
-
-    private void LoadSelectedSet()
-    {
-        if (_setsCombo.SelectedItem is not SetOption opt) return;
-        ExportIfcInputSet s = opt.Set;
-
-        _nameBox.Text = s.Name;
+        if (!string.IsNullOrWhiteSpace(s.DestinationFolder)) _destBox.Text = s.DestinationFolder;
+        if (!string.IsNullOrWhiteSpace(s.ProjectLogName)) _projectLogBox.Text = s.ProjectLogName;
         _outputBox.Text = s.OutputFolder;
         _viewContainsBox.Text = s.ViewTitleContains;
         for (int i = 0; i < _schemaCombo.Items.Count; i++)
@@ -200,7 +241,7 @@ public sealed class ExportIfcWindow : Form
         _keepDaysBox.Text = s.KeepRunsDays.ToString(CultureInfo.InvariantCulture);
     }
 
-    private ExportIfcInputSet Current()
+    private ExportIfcInputSet Current(string name)
     {
         var schema = IfcSchemaChoice.Ifc4ReferenceView;
         if (_schemaCombo.SelectedItem is NamedItem ni) Enum.TryParse(ni.Value, out schema);
@@ -211,7 +252,7 @@ public sealed class ExportIfcWindow : Form
 
         return new ExportIfcInputSet
         {
-            Name = _nameBox.Text.Trim(),
+            Name = name,
             OutputFolder = _outputBox.Text.Trim(),
             ViewTitleContains = _viewContainsBox.Text.Trim(),
             Schema = schema,
@@ -226,61 +267,24 @@ public sealed class ExportIfcWindow : Form
                 .Select(p => p.Trim()).Where(p => p.Length > 0).Distinct().ToList(),
             KeepRunsDays = keep,
             DestinationFolder = _destBox.Text.Trim(),
-            ProjectLogName = "Export IFC + Data"
+            ProjectLogName = string.IsNullOrWhiteSpace(_projectLogBox.Text) ? "Export IFC + Data" : _projectLogBox.Text.Trim()
         };
     }
 
-    private void SaveSet()
-    {
-        ExportIfcInputSet set = Current();
-        if (string.IsNullOrWhiteSpace(set.Name))
-        {
-            SetStatus("Give the set a name before saving.");
-            return;
-        }
-        ExportIfcSetStore.Save(set);
-        ReloadSets(set.Name);
-        SetStatus($"Saved '{set.Name}'.");
-    }
+    private void SaveSet() => _sets.Save(ref _loadedSetName, Current, missing: null);
 
-    private void DuplicateSet()
-    {
-        if (_setsCombo.SelectedItem is not SetOption opt)
-        {
-            SetStatus("Select a saved set to duplicate.");
-            return;
-        }
-        ExportIfcInputSet copy = opt.Set.Clone();
-        copy.Name = SetDuplication.UniqueName(opt.Set.Name, ExportIfcSetStore.LoadAll().Select(s => s.Name));
-        try
-        {
-            ExportIfcSetStore.Save(copy);
-        }
-        catch (Exception ex)
-        {
-            SetStatus("Could not duplicate set: " + ex.Message.Split('\n')[0]);
-            return;
-        }
-        ReloadSets(copy.Name);
-        SetStatus($"Duplicated '{opt.Set.Name}' as '{copy.Name}'.");
-    }
+    /// <summary>Forks the selected set to a new "&lt;name&gt; (copy)" and loads the copy — see
+    /// <see cref="InputSetActions{T}.Duplicate"/>.</summary>
+    private void DuplicateSet() => _sets.Duplicate();
 
-    private void DeleteSet()
-    {
-        if (_setsCombo.SelectedItem is not SetOption opt)
-        {
-            SetStatus("Select a saved set to delete.");
-            return;
-        }
-        ExportIfcSetStore.Delete(opt.Set.Name);
-        ReloadSets(null);
-        SetStatus($"Deleted '{opt.Set.Name}'.");
-    }
+    private void DeleteSet() => _sets.Delete(ref _loadedSetName);
 
     private void Commit()
     {
-        ExportIfcInputSet set = Current();
-        if (_modelSetsList.SelectedItem is not SetItem chosen)
+        ExportIfcInputSet set = Current(_loadedSetName ?? "");
+        bool active = _activeModelCheck?.Checked == true;
+        var chosen = _modelSetsList.SelectedItem as SetItem;
+        if (!active && chosen is null)
         {
             SetStatus("Select the model set to run over.");
             return;
@@ -292,8 +296,11 @@ public sealed class ExportIfcWindow : Form
         }
 
         ExportIfcSetStore.SaveLastUsed(set);
+        if (!string.IsNullOrWhiteSpace(set.DestinationFolder))
+            Settings.UserSettings.LastDestinationFolder = set.DestinationFolder;
         RunSpec = set;
-        SelectedModelSetName = chosen.Preset.Name;
+        RunOnActiveModel = active;
+        SelectedModelSetName = chosen?.Preset.Name ?? "";
         DialogResult = DialogResult.OK;
         Close();
     }

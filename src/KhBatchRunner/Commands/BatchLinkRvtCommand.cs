@@ -35,20 +35,33 @@ public sealed class BatchLinkRvtCommand : IExternalCommand
 
         UIApplication uiApp = commandData.Application;
 
+        // A runnable active document (a project model, not a family) lets the user run this on what
+        // is open right now instead of a model set — the same offer the simple Check/Action buttons
+        // make (see BatchActionCommandBase).
+        Document? activeDoc = uiApp.ActiveUIDocument?.Document;
+        string? activeName = (activeDoc != null && !activeDoc.IsFamilyDocument) ? activeDoc.Title : null;
+
         List<ModelPreset> presets = PresetStore.LoadAll();
-        if (BatchCommandFlow.NoModelSets(presets, "Batch Link RVT", "Batch Link RVT"))
+        if (activeName == null && BatchCommandFlow.NoModelSets(presets, "Batch Link RVT", "Batch Link RVT"))
             return Result.Cancelled;
 
         var client = new DataManagementClient(new SessionTokenProvider());
 
         BatchLinkRvtWindow? dialog = BatchCommandFlow.TryCreateDialog(
-            () => new BatchLinkRvtWindow(presets, client), "Batch Link RVT", "Batch Link RVT");
+            () => new BatchLinkRvtWindow(presets, client, activeName), "Batch Link RVT", "Batch Link RVT");
         if (dialog == null) return Result.Failed;
         using var _dlg = dialog;
         if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
             return Result.Cancelled;
 
         BatchLinkRvtInputSet inputs = dialog.Inputs!;
+
+        // Active model: link into the open document and stop there — nothing is saved or synced, so
+        // the links can be reviewed first. No confirm dialog: that one exists because a batch syncs
+        // every host before anyone can look, which is exactly what this path does not do.
+        if (dialog.RunOnActiveModel)
+            return ActiveModelRunner.Run(uiApp, new BatchLinkRvtAction(inputs))
+                ? Result.Succeeded : Result.Cancelled;
 
         // Hosts come from the chosen model set (which may be a folder-backed set — re-scanned to its
         // current members here; note = offline fallback).

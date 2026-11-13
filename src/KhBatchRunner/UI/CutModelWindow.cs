@@ -114,7 +114,7 @@ public sealed class CutModelWindow : Form
             Margin = new Padding(3, 4, 3, 4)
         };
 
-        _folderBox = new TextBox { Text = Environment.GetFolderPath(Environment.SpecialFolder.Desktop) };
+        _folderBox = new TextBox { Text = Settings.UserSettings.DefaultDestinationFolder };
         var browse = new Button { Text = "Browse…", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new System.Drawing.Size(80, 0) };
         browse.Click += (_, _) => BrowseForFolder();
 
@@ -299,6 +299,7 @@ public sealed class CutModelWindow : Form
                              ?? BatchCompletion.CloseDocuments;
         SplitEnabled = FormLayout.SplitAllowed((_completionCombo.SelectedItem as CompletionItem)?.Completion);
         // Auto-restore these inputs the next time the dialog opens.
+        Settings.UserSettings.LastDestinationFolder = _folderBox.Text.Trim();
         CutModelSetStore.SaveLastUsed(Inputs);
     }
 

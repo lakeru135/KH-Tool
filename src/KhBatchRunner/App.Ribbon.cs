@@ -324,7 +324,7 @@ public partial class App
             "created); a workset holding one RVT link is renamed to <keyword>_<model name>, extra " +
             "links move to their own worksets, and leftover elements in a link workset follow your " +
             "rules or move to WIP. Check mode reports only; Fix mode applies and syncs. Runs on a " +
-            "model set, a Forma folder, or the active model.",
+            "model set (a fixed list or a Forma folder set) or the active model.",
             Icons.CorrectWorkset);
         // --- NWD Helper panel (Revit ⇄ Navisworks; full edition only) ---
         // Export NWC: batch, read-only — it writes a FILE and never the model.

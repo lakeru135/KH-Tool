@@ -42,15 +42,30 @@ public sealed class ExportNwcCommand : IExternalCommand
             return Result.Cancelled;
         }
 
+        // A runnable active document (a project model, not a family) lets the user run this on what
+        // is open right now instead of a model set — the same offer the simple Check/Action buttons
+        // make (see BatchActionCommandBase).
+        Document? activeDoc = uiApp.ActiveUIDocument?.Document;
+        string? activeName = (activeDoc != null && !activeDoc.IsFamilyDocument) ? activeDoc.Title : null;
+
         List<ModelPreset> presets = PresetStore.LoadAll();
-        if (BatchCommandFlow.NoModelSets(presets, "Export NWC", "Export NWC"))
+        if (activeName == null && BatchCommandFlow.NoModelSets(presets, "Export NWC", "Export NWC"))
             return Result.Cancelled;
 
-        using var dialog = new ExportNwcWindow();
+        using var dialog = new ExportNwcWindow(activeName);
         if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK || dialog.RunSpec is null)
             return Result.Cancelled;
 
         ExportNwcInputSet inputs = dialog.RunSpec;
+
+        // Active model: one export of the open document, exactly as it is open — no engine, no
+        // reopen, so the worksets are whatever the user has open (the dialog says so). The action
+        // still needs telling where to write, which the engine would have done: see ActiveModelRunner.
+        if (dialog.RunOnActiveModel)
+            return ActiveModelRunner.Run(uiApp, new ExportNwcAction(inputs, year),
+                    inputs.DestinationFolder, inputs.ProjectLogName)
+                ? Result.Succeeded : Result.Cancelled;
+
         ModelPreset? selected = presets.FirstOrDefault(p =>
             p.Name.Equals(dialog.SelectedModelSetName, StringComparison.OrdinalIgnoreCase));
         if (selected is null)

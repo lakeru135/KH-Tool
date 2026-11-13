@@ -155,7 +155,7 @@ public sealed class CorrectWorksetWindow : Form
         _completionCombo.Items.Add(new CompletionItem(BatchCompletion.CloseRevit, "Close Revit when complete"));
         _completionCombo.SelectedIndex = 2; // Close Revit when complete (default) — see BatchRunWindow
 
-        _folderBox = new TextBox { Text = Environment.GetFolderPath(Environment.SpecialFolder.Desktop) };
+        _folderBox = new TextBox { Text = Settings.UserSettings.DefaultDestinationFolder };
         var browse = new Button { Text = "Browse…", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new System.Drawing.Size(80, 0) };
         browse.Click += (_, _) => BrowseForFolder();
         _projectLogBox = new TextBox { Text = "Correct Workset" };
@@ -385,6 +385,7 @@ public sealed class CorrectWorksetWindow : Form
         // "Run on the active model" is one already-open document — nothing to split.
         SplitEnabled = !_hostsActiveRadio.Checked &&
                        FormLayout.SplitAllowed((_completionCombo.SelectedItem as CompletionItem)?.Completion);
+        Settings.UserSettings.LastDestinationFolder = _folderBox.Text.Trim();
         CorrectWorksetSetStore.SaveLastUsed(Inputs);
     }
 

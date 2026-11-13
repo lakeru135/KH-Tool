@@ -26,6 +26,9 @@ public sealed class ScheduleInteropWindow : Form
     private readonly ScheduleTimingPanel _timing;
     private readonly ModelSourcePanel _models;
     private readonly ComboBox _checksetSetCombo;
+    private readonly InputSetActions<Interop.ChecksetSet> _checksets;
+    // Name of the checkset currently loaded from the combo (null for a typed-in one) — rename-on-save.
+    private string? _loadedChecksetName;
     private readonly TextBox _checksetBox;
     private readonly CheckBox _examinesLinksCheck;
     private readonly ComboBox _completionCombo;
@@ -82,10 +85,17 @@ public sealed class ScheduleInteropWindow : Form
         _checksetSetCombo.SelectedIndexChanged += (_, _) =>
         {
             if (_checksetSetCombo.SelectedItem is not Interop.ChecksetSet set) return;
+            _loadedChecksetName = set.Name;
             _checksetBox.Text = set.Path;
             // The flag belongs to the checkset, so picking a saved one brings its answer with it.
             _examinesLinksCheck.Checked = set.ExaminesLinks;
         };
+        _checksets = new InputSetActions<Interop.ChecksetSet>(this, _checksetSetCombo,
+            Interop.ChecksetSetStore.LoadAll, Interop.ChecksetSetStore.Exists,
+            Interop.ChecksetSetStore.Save, Interop.ChecksetSetStore.Delete,
+            c => c.Name, c => c.Clone(), (c, name) => c.Name = name,
+            c => c, o => o as Interop.ChecksetSet, SetStatus,
+            noun: "checkset", boxLabel: "Saved checkset");
         var saveChecksetSet = Mk("Save set", 80, SaveChecksetSet);
         var dupChecksetSet = Mk("Duplicate", 80, DuplicateChecksetSet);
         var deleteChecksetSet = Mk("Delete", 70, DeleteChecksetSet);
@@ -191,73 +201,29 @@ public sealed class ScheduleInteropWindow : Form
 
     // ---- saved checksets -------------------------------------------------------
 
-    private void ReloadChecksetCombo(string? selectName)
-    {
-        _checksetSetCombo.Items.Clear();
-        foreach (Interop.ChecksetSet set in Interop.ChecksetSetStore.LoadAll())
-            _checksetSetCombo.Items.Add(set);
-        if (selectName != null) SelectChecksetByName(selectName);
-    }
+    private void ReloadChecksetCombo(string? selectName) => _checksets.Reload(selectName);
 
-    private void SelectChecksetByName(string name)
-    {
-        for (int i = 0; i < _checksetSetCombo.Items.Count; i++)
-            if (((Interop.ChecksetSet)_checksetSetCombo.Items[i]).Name.Equals(name, StringComparison.OrdinalIgnoreCase))
-            { _checksetSetCombo.SelectedIndex = i; return; }
-    }
+    private void SelectChecksetByName(string name) => _checksets.SelectByName(name);
 
-    private void SaveChecksetSet()
-    {
-        string name = _checksetSetCombo.Text.Trim();
-        string path = _checksetBox.Text.Trim();
-        if (name.Length == 0) { SetStatus("Type a name for the checkset (in the Saved checkset box), then Save set."); return; }
-        if (path.Length == 0) { SetStatus("Choose a checkset (.xml file or hosted URL) before saving the set."); return; }
-        if (Interop.ChecksetSetStore.Exists(name) &&
-            MessageBox.Show(this, $"A checkset named '{name}' already exists. Overwrite it?", "Schedule Interop",
-                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
-            return;
-        Interop.ChecksetSetStore.Save(new Interop.ChecksetSet
+    /// <summary>Saves the path and the examines-links answer under the name typed in the combo —
+    /// overwrite prompt, rename-on-save and all, from <see cref="InputSetActions{T}"/>, the same
+    /// rules every other saved-set row follows.</summary>
+    private void SaveChecksetSet() => _checksets.Save(ref _loadedChecksetName,
+        name => new Interop.ChecksetSet
         {
-            Name = name, Path = path, ExaminesLinks = _examinesLinksCheck.Checked
-        });
-        ReloadChecksetCombo(selectName: name);
-    }
+            Name = name, Path = _checksetBox.Text.Trim(), ExaminesLinks = _examinesLinksCheck.Checked
+        },
+        () => _checksetBox.Text.Trim().Length == 0
+            ? "Choose a checkset (.xml file or hosted URL) before saving the set." : null);
 
     /// <summary>
     /// Forks the selected checkset entry to a new "&lt;name&gt; (copy)" and selects the copy — the
     /// starting point for the same checkset answered differently on
     /// <see cref="Interop.ChecksetSet.ExaminesLinks"/>, or for one hosted URL saved per project.
     /// </summary>
-    private void DuplicateChecksetSet()
-    {
-        if (_checksetSetCombo.SelectedItem is not Interop.ChecksetSet set)
-        { SetStatus("Select a saved checkset to duplicate."); return; }
-        Interop.ChecksetSet copy = set.Clone();
-        copy.Name = SetDuplication.UniqueName(
-            set.Name, Interop.ChecksetSetStore.LoadAll().Select(c => c.Name));
-        try
-        {
-            Interop.ChecksetSetStore.Save(copy);
-        }
-        catch (Exception ex)
-        {
-            SetStatus("Could not duplicate the checkset: " + ex.Message.Split('\n')[0]);
-            return;
-        }
-        ReloadChecksetCombo(selectName: copy.Name);
-    }
+    private void DuplicateChecksetSet() => _checksets.Duplicate();
 
-    private void DeleteChecksetSet()
-    {
-        if (_checksetSetCombo.SelectedItem is not Interop.ChecksetSet set)
-        { SetStatus("Select a saved checkset to delete."); return; }
-        if (MessageBox.Show(this, $"Delete checkset '{set.Name}'?", "Schedule Interop",
-                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
-            return;
-        Interop.ChecksetSetStore.Delete(set.Name);
-        ReloadChecksetCombo(selectName: null);
-        _checksetSetCombo.Text = "";
-    }
+    private void DeleteChecksetSet() => _checksets.Delete(ref _loadedChecksetName);
 
 
     // ---- schedule table --------------------------------------------------------

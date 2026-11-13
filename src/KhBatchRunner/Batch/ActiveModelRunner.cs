@@ -21,7 +21,18 @@ public static class ActiveModelRunner
 {
     /// <summary>Runs the action on the active document. Returns false when there is no runnable
     /// active document (nothing open, or a family document); a friendly dialog is shown first.</summary>
-    public static bool Run(UIApplication uiApp, IBatchAction action)
+    public static bool Run(UIApplication uiApp, IBatchAction action) =>
+        Run(uiApp, action, outputFolder: null, projectLogName: "");
+
+    /// <summary>
+    /// As <see cref="Run(UIApplication, IBatchAction)"/>, for an action whose whole point is a FILE
+    /// (Export NWC, Export IFC + Data). Such an action learns where to write in
+    /// <see cref="IBatchAction.ConfigureOutput"/> and finishes its run-level output in
+    /// <see cref="IBatchAction.OnRunComplete"/> — both normally called by the engine this runner
+    /// bypasses — so with a non-null <paramref name="outputFolder"/> they are called here, around the
+    /// one model. Still no tracking or detail CSV, and still no save/sync/close.
+    /// </summary>
+    public static bool Run(UIApplication uiApp, IBatchAction action, string? outputFolder, string projectLogName)
     {
         Document? doc = uiApp.ActiveUIDocument?.Document;
         if (doc == null)
@@ -42,12 +53,25 @@ public static class ActiveModelRunner
         {
             // RunDetailRows only (never Run() as well) — same call the engine makes per model,
             // so a write action's DoX() work happens exactly once.
+            if (outputFolder != null) action.ConfigureOutput(outputFolder, projectLogName);
             rows = action.RunDetailRows(uiApp, doc);
         }
         catch (Exception ex)
         {
             TaskDialog.Show("KH Batch Script Runner", $"\"{action.Name}\" failed on this model:\n\n{ex.Message}");
             return true;
+        }
+
+        if (outputFolder != null)
+        {
+            // Run-level output (Export IFC's manifest and converter). A failure here must not hide
+            // the rows of an export that did write its files.
+            try { action.OnRunComplete(); }
+            catch (Exception ex)
+            {
+                TaskDialog.Show("KH Batch Script Runner",
+                    $"\"{action.Name}\" ran, but finishing its output failed:\n\n{ex.Message}");
+            }
         }
 
         using var results = new ActionResultsWindow(

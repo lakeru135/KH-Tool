@@ -94,7 +94,7 @@ public sealed class CheckSheetPublishWindow : Form
 
         _recurse = new CheckBox { Text = "Include subfolders", AutoSize = true, Margin = new Padding(3, 4, 3, 4) };
 
-        _folderBox = new TextBox { Text = Environment.GetFolderPath(Environment.SpecialFolder.Desktop) };
+        _folderBox = new TextBox { Text = Settings.UserSettings.DefaultDestinationFolder };
         var destBrowse = new Button { Text = "Browse…", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(80, 0) };
         destBrowse.Click += (_, _) => BrowseForFolder();
         _reportNameBox = new TextBox { Text = "SheetPublish" };
@@ -244,6 +244,7 @@ public sealed class CheckSheetPublishWindow : Form
         if (string.IsNullOrWhiteSpace(_csvBox.Text) || !File.Exists(_csvBox.Text))
         { Warn("Choose an existing sheet-numbers CSV file."); return; }
         if (string.IsNullOrWhiteSpace(_folderBox.Text)) { Warn("Choose a destination folder."); return; }
+        Settings.UserSettings.LastDestinationFolder = _folderBox.Text.Trim();
 
         List<string> sheets;
         try { sheets = SheetNumberCsv.Read(_csvBox.Text); }

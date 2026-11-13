@@ -25,16 +25,22 @@ internal sealed class InputSetActions<T> where T : class
     private readonly Func<T, object> _toItem;
     private readonly Func<object?, T?> _fromItem;
     private readonly Action<string> _warn;
+    private readonly string _noun;
+    private readonly string _boxLabel;
 
     /// <param name="owner">Owner and caption (its <see cref="Control.Text"/>) of the confirm boxes.</param>
     /// <param name="combo">The editable "Input set:" combo.</param>
     /// <param name="toItem">Wraps a set as the combo item the window displays.</param>
     /// <param name="fromItem">The set behind a combo item, or null when it is not one.</param>
     /// <param name="warn">The window's own Warn (message box + DialogResult.None).</param>
+    /// <param name="noun">What the window calls one of these sets in its messages ("input set",
+    /// "options set", "checkset").</param>
+    /// <param name="boxLabel">The caption of the combo's row, named in the "type a name" hint.</param>
     public InputSetActions(Form owner, ComboBox combo,
         Func<List<T>> loadAll, Func<string, bool> exists, Action<T> save, Action<string> delete,
         Func<T, string> nameOf, Func<T, T> clone, Action<T, string> rename,
-        Func<T, object> toItem, Func<object?, T?> fromItem, Action<string> warn)
+        Func<T, object> toItem, Func<object?, T?> fromItem, Action<string> warn,
+        string noun = "input set", string boxLabel = "Input set")
     {
         _owner = owner;
         _combo = combo;
@@ -48,6 +54,8 @@ internal sealed class InputSetActions<T> where T : class
         _toItem = toItem;
         _fromItem = fromItem;
         _warn = warn;
+        _noun = noun;
+        _boxLabel = boxLabel;
     }
 
     public void Reload(string? selectName)
@@ -79,7 +87,7 @@ internal sealed class InputSetActions<T> where T : class
         string name = _combo.Text.Trim();
         if (name.Length == 0)
         {
-            _warn("Type a name for the input set (in the Input set box), then Save set.");
+            _warn($"Type a name for the {_noun} (in the {_boxLabel} box), then Save set.");
             return;
         }
         string? problem = missing?.Invoke();
@@ -92,7 +100,7 @@ internal sealed class InputSetActions<T> where T : class
                         !name.Equals(loadedSetName, StringComparison.OrdinalIgnoreCase);
         if (_exists(name) && (loadedSetName == null || renaming))
         {
-            if (MessageBox.Show(_owner, $"An input set named '{name}' already exists. Overwrite it?",
+            if (MessageBox.Show(_owner, $"{Article(_noun)} {_noun} named '{name}' already exists. Overwrite it?",
                     _owner.Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                 return;
         }
@@ -114,7 +122,7 @@ internal sealed class InputSetActions<T> where T : class
     {
         if (_fromItem(_combo.SelectedItem) is not T selected)
         {
-            _warn("Select a saved input set to duplicate.");
+            _warn($"Select a saved {_noun} to duplicate.");
             return;
         }
         T copy = _clone(selected);
@@ -125,7 +133,7 @@ internal sealed class InputSetActions<T> where T : class
         }
         catch (Exception ex)
         {
-            _warn("Could not duplicate the input set: " + ex.Message);
+            _warn($"Could not duplicate the {_noun}: " + ex.Message);
             return;
         }
         // Selecting the new row raises SelectedIndexChanged -> ApplyInputs(loaded: true), which is
@@ -138,10 +146,10 @@ internal sealed class InputSetActions<T> where T : class
     {
         if (_fromItem(_combo.SelectedItem) is not T selected)
         {
-            _warn("Select a saved input set to delete.");
+            _warn($"Select a saved {_noun} to delete.");
             return;
         }
-        if (MessageBox.Show(_owner, $"Delete input set '{_nameOf(selected)}'?",
+        if (MessageBox.Show(_owner, $"Delete {_noun} '{_nameOf(selected)}'?",
                 _owner.Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
             return;
         _delete(_nameOf(selected));
@@ -150,4 +158,7 @@ internal sealed class InputSetActions<T> where T : class
         Reload(selectName: null);
         _combo.Text = "";
     }
+
+    private static string Article(string noun) =>
+        noun.Length > 0 && "aeiou".IndexOf(char.ToLowerInvariant(noun[0])) >= 0 ? "An" : "A";
 }

@@ -86,7 +86,7 @@ public sealed class RebuildMatrixWindow : Form
         var csvBrowse = new Button { Text = "Browse…", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new System.Drawing.Size(80, 0) };
         csvBrowse.Click += (_, _) => { if (InteropSelected) BrowseForReports(); else BrowseForCsv(); };
 
-        _outFolderBox = new TextBox { Text = Environment.GetFolderPath(Environment.SpecialFolder.Desktop) };
+        _outFolderBox = new TextBox { Text = Settings.UserSettings.DefaultDestinationFolder };
         var outBrowse = new Button { Text = "Browse…", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new System.Drawing.Size(80, 0) };
         outBrowse.Click += (_, _) => BrowseForFolder();
 

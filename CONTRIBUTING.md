@@ -32,6 +32,35 @@ Thanks for helping. A few rules keep this add-in safe to run against real projec
 - **Autodesk internals.** Reflection on undocumented Autodesk code stays in its existing wrapper
   files (see SECURITY.md). Never commit Autodesk binaries or decompiled third-party code.
 
+## A new batch feature
+
+Every feature that runs over models behaves the same way, so someone who has used one dialog can
+use the next. A new one must:
+
+1. **Pick model sets through `ModelSetAccess`.** `BindSetCombo` for one set, a
+   `DimmableCheckedListBox` with `AttachGreying` for several. That gives the access greying,
+   ordering and labels for free.
+2. **Save its options as a named set.** A `NamedJsonSetStore` facade, described in
+   `SettingsCatalog`, with the row wired through `InputSetActions`: save prompts before it
+   overwrites, a new name renames, and there is Duplicate, Delete (with a confirm) and a last-used
+   restore when the dialog opens.
+3. **Offer "Run on active model"** through `ActiveModelRunner`, unless the action cannot work on an
+   open document. If it cannot, say why in the command's class comment.
+4. **Run on a set through `BatchCommandFlow.RunModal`.** Never from an Idling event.
+5. **Work in Batch Run and Schedule Run** by carrying its options as a spec on `ScheduledJob`
+   (cloned in `Duplicate()`), or state in the class comment that it is dialog-only.
+6. **Split through `InteractiveSplit.TryLaunch`**, or declare "no split" with the reason. *(This
+   rule is under review: the parallel paths are due a separate pass.)*
+7. **Show the same run options:** "When finished", a destination folder that starts on
+   `UserSettings.DefaultDestinationFolder`, a project log name, and buttons named "Run" and
+   "Cancel".
+8. **Declare itself:** workset posture (the compiler insists), a row in the TEST.md matrix, the
+   window in `ThemePreview.Windows()`, and a line in the handbook's feature table.
+
+`install\Verify-BatchFeatureContract.ps1` checks the parts of rules 1, 2 and 7 that can be read
+from the source. An exemption is a line in that script with its reason. Rules 3, 5 and 6 need
+judgement: answer them in the pull request.
+
 ## Naming
 
 - Code, assembly and on-disk names use **Kh** (`KhBatchRunner`, `KHBATCH_*`).

@@ -51,6 +51,7 @@ Run all of them; none may be edited to pass.
 .\install\Verify-ConstrainedLanguageSafe.ps1
 .\install\Verify-WindowConstruction.ps1 -Configuration Release
 .\install\Verify-ActionPosture.ps1
+.\install\Verify-BatchFeatureContract.ps1 -Inject
 .\install\Verify-KhMcp.ps1
 dotnet run --project tools\LivenessSim
 dotnet run --project tools\BundleTest
@@ -231,13 +232,17 @@ once with the Full edition and once with DRW Helper:
 
 1. The ribbon tab and every panel appear; click each button once and confirm its dialog opens.
 2. Last-used values are restored in each dialog on the second open.
-3. In Cut Model, Initiate to Forma, Internal Relink, Correct Workset and Batch Link RVT: save an
-   input set, save it under a new name, overwrite it (confirm prompt), duplicate it, delete it.
-4. One interactive **Batch Run** with "leave files open".
-5. **Edit Sets → Edit Model Set** with no model open: the tree loads your hubs, a folder lists its
+3. In Cut Model, Initiate to Forma, Internal Relink, Correct Workset, Batch Link RVT, Export NWC,
+   Export IFC + Data and Batch Interop (its checkset row): save a set, save it under a new name,
+   overwrite it (confirm prompt), duplicate it, delete it (confirm prompt).
+4. With a small local model open: tick "Run on active model only" in one simple check, Correct
+   Workset, Export NWC, Export IFC + Data and Batch Link RVT. Each shows a result grid; nothing is
+   saved or synced, and the exports write their files.
+5. One interactive **Batch Run** with "leave files open".
+6. **Edit Sets → Edit Model Set** with no model open: the tree loads your hubs, a folder lists its
    `.rvt` models, a saved set appears in every model-set list. If sign-in is missing, the dialog
    names the reason.
-6. **GUID mapping, once per new hub:** open one model of a saved set normally and compare
+7. **GUID mapping, once per new hub:** open one model of a saved set normally and compare
    `Document.GetCloudModelPath()` → `GetProjectGUID()` / `GetModelGUID()` with the `ProjectGuid` /
    `ModelGuid` in the set's JSON under `%AppData%\KhBatchRunner\Presets\`. Trust batch runs on that
    hub only after this matches. A hand-authored set (`src\KhBatchRunner\docs\sample-preset.json`)

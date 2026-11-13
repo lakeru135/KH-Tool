@@ -113,7 +113,7 @@ public sealed class DataExtractWindow : Form
         var deleteSet = new Button { Text = "Delete", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(60, 0) };
         deleteSet.Click += (_, _) => DeleteSet();
 
-        _folderBox = new TextBox { Text = Environment.GetFolderPath(Environment.SpecialFolder.Desktop) };
+        _folderBox = new TextBox { Text = Settings.UserSettings.DefaultDestinationFolder };
         var browse = new Button { Text = "Browse…", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(80, 0) };
         browse.Click += (_, _) => BrowseForFolder();
 
@@ -449,6 +449,7 @@ public sealed class DataExtractWindow : Form
         string dest = set.DestinationFolder;
         // Remembered even when the set was never named, so reopening the dialog resumes where it
         // left off — the same courtesy every other input-set dialog extends.
+        Settings.UserSettings.LastDestinationFolder = _folderBox.Text.Trim();
         DataExtractSetStore.SaveLastUsed(set);
 
         DateTime stamp = DateTime.Now;

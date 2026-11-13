@@ -118,7 +118,7 @@ public sealed class RelinkModelWindow : Form
             AutoSize = true, Checked = true, Margin = new Padding(3, 4, 3, 4)
         };
 
-        _folderBox = new TextBox { Text = Environment.GetFolderPath(Environment.SpecialFolder.Desktop) };
+        _folderBox = new TextBox { Text = Settings.UserSettings.DefaultDestinationFolder };
         var browse = new Button { Text = "Browse…", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new System.Drawing.Size(80, 0) };
         browse.Click += (_, _) => BrowseForFolder();
 
@@ -311,6 +311,7 @@ public sealed class RelinkModelWindow : Form
         SelectedCompletion = (_completionCombo.SelectedItem as CompletionItem)?.Completion
                              ?? BatchCompletion.CloseDocuments;
         SplitEnabled = FormLayout.SplitAllowed((_completionCombo.SelectedItem as CompletionItem)?.Completion);
+        Settings.UserSettings.LastDestinationFolder = _folderBox.Text.Trim();
         RelinkSetStore.SaveLastUsed(Inputs);
     }
 
