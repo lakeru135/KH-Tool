@@ -21,7 +21,7 @@
     <!-- UseWPF is here for System.Windows.Automation only (AddInSecurityDialogHandler), which is
          how the controller answers Revit's unsigned-add-in prompt from outside the Revit process. -->
     <UseWPF>true</UseWPF>
-    <LangVersion>latest</LangVersion>
+    <LangVersion>12.0</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>KhBatchController</RootNamespace>

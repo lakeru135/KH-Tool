@@ -4,11 +4,12 @@ Thanks for helping. A few rules keep this add-in safe to run against real projec
 
 ## Before you open a pull request
 
-1. **Build every year you touched.** Revit 2024 is net48, and 2025/2026 are net8. Code that
+1. **Build every year you touched.** Revit 2024 is net48, 2025/2026 are net8 and 2027 is net10. Code that
    compiles for one can fail on another.
    ```pwsh
    dotnet build src/KhBatchRunner/KhBatchRunner.csproj -p:RevitVersion=2024 -p:RevitApiFromNuGet=true
    dotnet build src/KhBatchRunner/KhBatchRunner.csproj -p:RevitVersion=2026 -p:RevitApiFromNuGet=true
+   dotnet build src/KhBatchRunner/KhBatchRunner.csproj -p:RevitVersion=2027 -p:RevitApiFromNuGet=true
    dotnet build src/KhBatchRunner/KhBatchRunner.csproj -p:RevitVersion=2026 -p:Edition=DRW -p:RevitApiFromNuGet=true
    dotnet build src/KhBatchController/KhBatchController.csproj
    ```

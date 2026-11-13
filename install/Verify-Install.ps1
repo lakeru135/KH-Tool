@@ -14,7 +14,7 @@
   Prints PASS/FAIL per check and exits non-zero if anything failed.
 
 .PARAMETER Product
-  KhBatchRunner (years 2024/2025/2026).
+  KhBatchRunner (years 2024/2025/2026/2027).
 
 .PARAMETER Version
   Expected version (3-part, e.g. 0.6.1). Defaults to the AppVersion parsed from the product .iss.
@@ -36,7 +36,7 @@ if ($true) {
     $base  = "KhBatchRunner"
     $iss   = Join-Path $PSScriptRoot "KhBatchRunner.iss"
     # Only years whose Revit is actually installed carry files.
-    $years = @("2024", "2025", "2026") | Where-Object {
+    $years = @("2024", "2025", "2026", "2027") | Where-Object {
         Test-Path "$env:ProgramFiles\Autodesk\Revit $_"
     }
 }

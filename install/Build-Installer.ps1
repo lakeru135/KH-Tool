@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
-  Builds the one combined KH Batch Script Runner installer covering Revit 2024/2025/2026.
+  Builds the one combined KH Batch Script Runner installer covering Revit 2024/2025/2026/2027.
 
-  Runs three Release builds (-p:RevitVersion=2024|2025|2026), verifies each per-year bin tree
+  Runs one Release build per year (-p:RevitVersion=2024|2025|2026|2027; 2027 needs the .NET 10 SDK), verifies each per-year bin tree
   exists, then compiles install\KhBatchRunner.iss with ISCC.exe into install\Output\.
   The single setup.exe installs the add-in only for the Revit versions detected on the target
   machine (see the .iss per-file RevitInstalled check; there is no component/version question).
@@ -29,13 +29,13 @@
 
 .NOTES
   Keep Product.Version (src\KhBatchRunner\Product.cs) and AppVersion (KhBatchRunner.iss) in
-  step - currently 1.3.8.1 - and set Product.BuiltInExpiryUtc to 90 days from the build date.
+  step - currently 2.1.0.2 - and set Product.BuiltInExpiryUtc to 90 days from the build date.
   Requires Inno Setup 6 (ISCC.exe); pass -Iscc to override its path.
 #>
 param(
     [string]$Iscc = "",
-    [ValidateSet("2024", "2025", "2026")]
-    [string[]]$Versions = @("2024", "2025", "2026"),
+    [ValidateSet("2024", "2025", "2026", "2027")]
+    [string[]]$Versions = @("2024", "2025", "2026", "2027"),
     [switch]$Unlimited,
     [ValidatePattern('^$|^\d{4}-\d{2}-\d{2}$')]
     [string]$ExpiryUtc = ""

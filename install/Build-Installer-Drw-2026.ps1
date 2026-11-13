@@ -1,8 +1,8 @@
 ﻿<#
 .SYNOPSIS
-  Builds the standalone DRW Helper (drawing-production ribbon) installer for Revit 2024 + 2026.
+  Builds the standalone DRW Helper (drawing-production ribbon) installer for Revit 2024 + 2026 + 2027.
 
-  Runs the DRW Release builds (-p:RevitVersion=2024|2026 -p:Edition=DRW), verifies the bin trees
+  Runs the DRW Release builds (-p:RevitVersion=2024|2026|2027 -p:Edition=DRW), verifies the bin trees
   exist, then compiles install\DrwHelper-2026.iss with ISCC.exe into install\Output\
   (DrwHelper-Setup.exe; 2024 added in 0.4.0.0, the script keeps its old name). DRW Helper is built from the same source as the full add-in via the
   Edition flag; see install\Build-Installer.ps1 for the full KH Batch Script Runner (all years).
@@ -20,7 +20,7 @@
 
 .NOTES
   Keep Product.Version (src\KhBatchRunner\Product.cs, EDITION_DRW branch) and AppVersion (DrwHelper-2026.iss) in step —
-  currently 2.1.0.0. DRW compiles the expiry gate out (NO_EXPIRY_GATE) until it has its own update manifest.
+  currently 2.1.0.2. DRW compiles the expiry gate out (NO_EXPIRY_GATE) until it has its own update manifest.
   Requires Inno Setup 6 (ISCC.exe); pass -Iscc to override its path.
 #>
 param(
@@ -47,13 +47,13 @@ Write-Host "AppVersion (from .iss): $ver" -ForegroundColor Cyan
 # by testing here, where PowerShell is unrestricted - only by the lint.
 & (Join-Path $PSScriptRoot "Verify-ConstrainedLanguageSafe.ps1")
 
-# --- 1. Build the DRW Release trees (2024 net48, 2026 net8) ---
+# --- 1. Build the DRW Release trees (2024 net48, 2026 net8, 2027 net10) ---
 $extraArgs = @()
 if ($ExpiryUtc) {
     $extraArgs += "-p:ExpiryUtc=$ExpiryUtc"
     Write-Host "Expiry overridden for this build: $ExpiryUtc" -ForegroundColor Yellow
 }
-foreach ($v in @("2024", "2026")) {
+foreach ($v in @("2024", "2026", "2027")) {
     Write-Host "== dotnet build Release RevitVersion=$v Edition=DRW Version=$ver $extraArgs ==" -ForegroundColor Cyan
     dotnet build $csproj -c Release -p:RevitVersion=$v -p:Edition=DRW -p:Version=$ver @extraArgs --nologo -v minimal
     if ($LASTEXITCODE -ne 0) { throw "Build failed for RevitVersion=$v Edition=DRW" }

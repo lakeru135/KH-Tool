@@ -62,7 +62,7 @@ One codebase builds three products, chosen with `-p:Edition=`:
 
 ## Build
 
-Requires the **.NET 8 SDK**. The Revit API comes either from a local Revit install or from NuGet
+Requires the **.NET 8 SDK**, and the **.NET 10 SDK** to build for Revit 2027. The Revit API comes either from a local Revit install or from NuGet
 (`-p:RevitApiFromNuGet=true`, which is useful on a PC without that Revit year).
 
 ```pwsh
@@ -71,6 +71,7 @@ dotnet build src/KhBatchRunner/KhBatchRunner.csproj -c Release -p:RevitVersion=2
 
 # other years / editions
 dotnet build src/KhBatchRunner/KhBatchRunner.csproj -p:RevitVersion=2024 -p:RevitApiFromNuGet=true
+dotnet build src/KhBatchRunner/KhBatchRunner.csproj -p:RevitVersion=2027 -p:RevitApiFromNuGet=true
 dotnet build src/KhBatchRunner/KhBatchRunner.csproj -p:RevitVersion=2026 -p:Edition=DRW
 dotnet build src/KhBatchRunner/KhBatchRunner.csproj -p:RevitVersion=2026 -p:Edition=FullUnlimited
 
@@ -79,7 +80,7 @@ dotnet build src/KhBatchController/KhBatchController.csproj
 ```
 
 Output goes to `src/KhBatchRunner/bin/<Config>/[<Edition>/]<Year>/`. Revit 2024 builds target
-net48; 2025 and 2026 target net8.
+net48; 2025 and 2026 target net8; 2027 targets net10.
 
 ## Install
 

@@ -237,7 +237,7 @@ internal static class DrwControls
         // Dock=Top stacks in reverse order of addition. Docked here rather than trusted to the
         // caller: a bare CheckBox handed in (Stair Annotation's "Leave stairs…") kept Dock=None and
         // sat at 0,0 on top of the first group.
-        foreach (Control g in groups.Reverse())
+        foreach (Control g in Enumerable.Reverse(groups))
         {
             g.Dock = DockStyle.Top;
             page.Controls.Add(g);

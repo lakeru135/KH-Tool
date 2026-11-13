@@ -34,6 +34,8 @@ internal abstract class DrwSampleDiagram : Control
     }
 
     /// <summary>"room" or "stair", for the labels.</summary>
+    // Not designer-serialized: .NET 9+ WinForms (the Revit 2027 build) makes an undeclared property an error (WFO1000).
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public string TargetWord { get; set; } = "room";
 
     protected string TargetTitle => char.ToUpperInvariant(TargetWord[0]) + TargetWord.Substring(1);

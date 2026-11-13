@@ -38,7 +38,7 @@ internal static class Product
 #endif
 
     // One version line for every edition: the public repository starts at 2.0.0.
-    public const string Version = "2.1.0.1";
+    public const string Version = "2.1.0.2";
     public const string Publisher = "Kanghun BIM";
 
     /// <summary>
@@ -118,6 +118,8 @@ internal static class Product
     /// <summary>Short "what's new" list shown on the About dialog. Keep the newest at the top.</summary>
 #if EDITION_DRW
     public const string Changelog =
+        "DRW Helper (2.1.0.2) — review build:\n" +
+        "• Adds a build for Revit 2027.\n\n" +
         "DRW Helper (2.1.0):\n" +
         "• Version kept in step with KH-Tool 2.1.0; the DRW tools are unchanged.\n\n" +
         "DRW Helper (2.0.0) — first public release:\n" +
@@ -128,6 +130,8 @@ internal static class Product
         "• Setting: Model Set, Batch Run, Sync View.";
 #else
     public const string Changelog =
+        "KH-Tool (2.1.0.2) — review build:\n" +
+        "• Adds a build for Revit 2027.\n\n" +
         "KH-Tool (2.1.0.1) — review build:\n" +
         "• Export NWC and Export IFC + Data: tick several model sets for one run, or run on the " +
         "model that is open (\"Run on active model only\" appears when a project is open).\n" +

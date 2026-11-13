@@ -26,7 +26,7 @@
   parked when permissions allow - see Disable-ConflictingManifests below.
 #>
 param(
-    [ValidateSet("2024", "2025", "2026")]
+    [ValidateSet("2024", "2025", "2026", "2027")]
     [string]$RevitVersion = "2026",
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Debug",
@@ -164,7 +164,7 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 New-Item -ItemType Directory -Force -Path $payload | Out-Null
 
 # Copy the manifest, symbols, and every DLL the build emitted. The net48 (Revit 2024) build
-# drops System.Text.Json + its transitives here; net8 (2025/2026) drops just our dll (+ STJ).
+# drops System.Text.Json + its transitives here; net8 (2025/2026) and net10 (2027) drop just our dll (+ STJ).
 # RevitAPI/RevitAPIUI are never in bin (Private=false), so a blanket *.dll copy is safe.
 Copy-Item (Join-Path $bin "$asmName.addin") $dest -Force; Write-Host "  copied $asmName.addin"
 $pdb = Join-Path $bin "$asmName.pdb"

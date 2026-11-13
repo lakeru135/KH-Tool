@@ -160,7 +160,13 @@ internal static class StairAnnotator
         if (p.NumberSizeMm > 0)
             Try("Number Size", () =>
             {
+#if REVIT2027
+                // Revit 2027 removed NUMBER_SYSTEM_TEXT_SIZE (the number's text now comes from text
+                // overrides, NUMBER_SYSTEM_OVERRIDE_TEXT_PARAMS). Not ported yet: reported as not set.
+                Parameter? size = null;
+#else
                 Parameter? size = ns.get_Parameter(BuiltInParameter.NUMBER_SYSTEM_TEXT_SIZE);
+#endif
                 if (size == null || size.IsReadOnly || !size.Set(Mm(p.NumberSizeMm))) throw new InvalidOperationException();
             });
         return string.Join(", ", failed);

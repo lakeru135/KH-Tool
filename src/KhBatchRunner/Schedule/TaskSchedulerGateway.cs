@@ -158,7 +158,7 @@ public static partial class TaskSchedulerGateway
         string kanghun = Path.Combine(programFiles, "Kanghun BIM", LauncherExeName);
         if (seen.Add(kanghun)) yield return kanghun;
 
-        foreach (string year in new[] { "2026", "2025", "2024" })
+        foreach (string year in new[] { "2027", "2026", "2025", "2024" })
         {
             string yearCopy = Path.Combine(addins, year, LauncherExeName);
             if (seen.Add(yearCopy)) yield return yearCopy;

@@ -681,7 +681,7 @@ public static class RunNotification
         try
         {
             string executable = Process.GetCurrentProcess().MainModule?.FileName ?? "";
-            foreach (string year in new[] { "2024", "2025", "2026" })
+            foreach (string year in new[] { "2024", "2025", "2026", "2027" })
                 if (executable.IndexOf("Revit " + year, StringComparison.OrdinalIgnoreCase) >= 0)
                     return year;
         }

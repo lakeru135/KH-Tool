@@ -2018,19 +2018,19 @@ internal static class Program
         // registered at all, which is the failure the multi-copy search exists to prevent. The
         // installed case has one fewer DISTINCT path only because its own folder is one of the
         // years — not because anything was lost.
-        Expect("an installed copy sees %ProgramFiles% plus the three years", installed.Count, 4);
-        Expect("…a side-by-side build sees its own on top of those", dev.Count, 5);
+        Expect("an installed copy sees %ProgramFiles% plus the four years", installed.Count, 5);
+        Expect("…a side-by-side build sees its own on top of those", dev.Count, 6);
         Expect("…and every installed path is in the side-by-side list too",
             installed.All(dev.Contains), true);
 
-        // A per-year folder that is not one of the three the loop knows about must still come back.
-        string addins2027 = Path.Combine(commonAppData, @"Autodesk\Revit\Addins\2027");
+        // A per-year folder that is not one of the years the loop knows about must still come back.
+        string addins2028 = Path.Combine(commonAppData, @"Autodesk\Revit\Addins\2028");
         var future = TaskSchedulerGateway
-            .OrderedLauncherPaths(addins2027, programFiles, commonAppData).ToList();
+            .OrderedLauncherPaths(addins2028, programFiles, commonAppData).ToList();
         Expect("an Addins folder outside the known years is not dropped",
-            future.Contains(Path.Combine(addins2027, "KhBatchLauncher.exe")), true);
+            future.Contains(Path.Combine(addins2028, "KhBatchLauncher.exe")), true);
         Expect("…and still does not precede %ProgramFiles%",
-            future.IndexOf(Path.Combine(addins2027, "KhBatchLauncher.exe")) > future.IndexOf(kanghun),
+            future.IndexOf(Path.Combine(addins2028, "KhBatchLauncher.exe")) > future.IndexOf(kanghun),
             true);
     }
 

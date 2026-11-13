@@ -2,7 +2,7 @@
 
   <!--
     Scoped to src\KhBatchRunner\ so tools\ThemePreview is untouched.
-    RevitVersion is the single build axis: -p:RevitVersion=2024|2025|2026.
+    RevitVersion is the single build axis: -p:RevitVersion=2024|2025|2026|2027.
     BaseIntermediateOutputPath must be set here (before the SDK props evaluate) so each
     Revit version restores into its own obj\ — the package graph differs per version
     (net48 + PolySharp for 2024, Nice3point for 2025), and a shared obj\project.assets.json

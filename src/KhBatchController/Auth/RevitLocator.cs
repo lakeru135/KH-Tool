@@ -13,7 +13,7 @@ namespace KhBatchController.Auth;
 public static class RevitLocator
 {
     /// <summary>Newest first — a machine with several releases installed gets the newest by default.</summary>
-    private static readonly string[] KnownVersions = { "2026", "2025", "2024" };
+    private static readonly string[] KnownVersions = { "2027", "2026", "2025", "2024" };
 
     private const string OverrideEnvVar = "KHBATCH_REVIT_EXE";
 

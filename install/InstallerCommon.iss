@@ -36,6 +36,7 @@ begin
   if RevitInstalled('2024') then Result := AppendYear(Result, '2024');
   if RevitInstalled('2025') then Result := AppendYear(Result, '2025');
   if RevitInstalled('2026') then Result := AppendYear(Result, '2026');
+  if RevitInstalled('2027') then Result := AppendYear(Result, '2027');
 end;
 
 // True if any process with this image name is running. WMI rather than a window search, because it

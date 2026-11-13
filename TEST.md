@@ -10,22 +10,24 @@ Three layers of testing, cheapest first:
 The ribbon tab is **KH-Tool** (Full edition) or **DRW Helper** (DRW edition).
 
 ## Build
-Requires the .NET 8 SDK. Pass `-p:RevitApiFromNuGet=true` when that Revit year is not installed,
+Requires the .NET 8 SDK, and the .NET 10 SDK for the Revit 2027 build. Pass `-p:RevitApiFromNuGet=true` when that Revit year is not installed,
 **and for Revit 2026 whenever the installed Revit is 2026.5 or later** (its own API assemblies need
 a newer runtime than the .NET 8 SDK compiles against, and the build fails with `CS1705`).
 
 ```pwsh
+dotnet build src\KhBatchRunner\KhBatchRunner.csproj -c Release -p:RevitVersion=2027 -p:RevitApiFromNuGet=true
 dotnet build src\KhBatchRunner\KhBatchRunner.csproj -c Release -p:RevitVersion=2026 -p:RevitApiFromNuGet=true
 dotnet build src\KhBatchRunner\KhBatchRunner.csproj -c Release -p:RevitVersion=2025 -p:RevitApiFromNuGet=true
 dotnet build src\KhBatchRunner\KhBatchRunner.csproj -c Release -p:RevitVersion=2024 -p:RevitApiFromNuGet=true
 dotnet build src\KhBatchRunner\KhBatchRunner.csproj -c Release -p:RevitVersion=2026 -p:Edition=DRW -p:RevitApiFromNuGet=true
+dotnet build src\KhBatchRunner\KhBatchRunner.csproj -c Release -p:RevitVersion=2027 -p:Edition=DRW -p:RevitApiFromNuGet=true
 dotnet build src\KhBatchRunner\KhBatchRunner.csproj -c Release -p:RevitVersion=2026 -p:Edition=FullUnlimited -p:RevitApiFromNuGet=true
 dotnet build src\KhBatchController\KhBatchController.csproj
 dotnet build src\KhBatchLauncher\KhBatchLauncher.csproj
 dotnet build src\KhMcp\KhMcp.csproj
 ```
 
-A change is only "built" when the whole matrix is green: 2024 (net48), 2025, 2026; 2026 × DRW and
+A change is only "built" when the whole matrix is green: 2024 (net48), 2025, 2026, 2027 (net10); 2026 and 2027 × DRW and
 FullUnlimited; Debug and Release for 2026 Full; Controller, Launcher, KhMcp and the `tools\*`
 projects.
 
@@ -140,7 +142,8 @@ What the window and action gates prove, and why each exists:
 ## 2. Live feature matrix
 Every feature, run against three kinds of model: **workshared cloud**, **non-workshared cloud**
 (single-user cloud model, no worksets) and **local files**. Revit 2026 gets the full matrix;
-Revit 2024 (net48) gets the starred rows. Revit 2025 is build-only unless it is installed.
+Revit 2024 (net48) and Revit 2027 (net10) get the starred rows. Revit 2025 is build-only unless it
+is installed.
 
 Rules for a live run:
 
@@ -252,9 +255,9 @@ once with the Full edition and once with DRW Helper:
 
 ## Installer (.exe)
 `install/Output/KhBatchRunner-Setup.exe` — **ONE installer for Revit 2024 + 2025 +
-2026, all-users, requires admin**. Build it with
-`powershell install\Build-Installer.ps1`, which runs the three Release builds
-(`-p:RevitVersion=2024|2025|2026`), checks each per-year `bin\Release\<year>` tree,
+2026 + 2027, all-users, requires admin**. Build it with
+`powershell install\Build-Installer.ps1`, which runs one Release build per year
+(`-p:RevitVersion=2024|2025|2026|2027`), checks each per-year `bin\Release\<year>` tree,
 then compiles `install/KhBatchRunner.iss` with `ISCC.exe`. The setup installs the
 add-in only for the Revit years **detected** on the machine (each year is a
 component, auto-checked when `C:\Program Files\Autodesk\Revit <year>` exists), into

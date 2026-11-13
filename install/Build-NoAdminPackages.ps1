@@ -35,10 +35,10 @@ $stage   = Join-Path $env:TEMP "KhBatchNoAdmin"
 $defs = @{
     Full = @{ Name = "KhBatchRunner"; Product = "KH Batch Script Runner"; Tab = "KH-Tool"
               Iss = "KhBatchRunner.iss"; Asm = "KhBatchRunner"; Subdir = ""; Protocol = 1
-              Bins = [ordered]@{ "2024" = "2024"; "2025" = "2025"; "2026" = "2026" } }
+              Bins = [ordered]@{ "2024" = "2024"; "2025" = "2025"; "2026" = "2026"; "2027" = "2027" } }
     DRW  = @{ Name = "DrwHelper"; Product = "DRW Helper"; Tab = "DRW Helper"
               Iss = "DrwHelper-2026.iss"; Asm = "DrwHelper"; Subdir = "DrwHelper\"; Protocol = 0
-              Bins = [ordered]@{ "2024" = "DRW\2024"; "2026" = "DRW\2026" } }
+              Bins = [ordered]@{ "2024" = "DRW\2024"; "2026" = "DRW\2026"; "2027" = "DRW\2027" } }
 }
 
 # The templates are ASCII batch files; cmd.exe needs CRLF. Written byte-exact (no BOM): this PC's

@@ -1,6 +1,6 @@
-; Inno Setup script for DRW Helper (the drawing-production ribbon) — REVIT 2024 + 2026.
+; Inno Setup script for DRW Helper (the drawing-production ribbon) — REVIT 2024 + 2026 + 2027.
 ; (The file keeps its old -2026 name so the build scripts that point at it need not move; 2024 was
-; added in 0.4.0.0. Revit 2025 is not offered: its bundled families do not exist yet.)
+; added in 0.4.0.0, 2027 in 2.1.0.2. Revit 2025 is not offered: its bundled families do not exist yet.)
 ;
 ; DRW Helper is a standalone product built from the same source as the KH Batch Script Runner via
 ; -p:Edition=DRW: its own assembly (DrwHelper.dll), manifest (DrwHelper.addin, distinct AddInId)
@@ -21,7 +21,7 @@
 ; Build the DRW Release bin trees first, then compile — see install\Build-Installer-Drw-2026.ps1.
 
 #define AppName "DRW Helper"
-#define AppVersion "2.1.0.1"
+#define AppVersion "2.1.0.2"
 ; AppId (single-brace literal, matches [Setup]) + version, consumed by InstallerCommon.iss.
 #define InstAppId "{753E7E24-9663-4DFE-844D-52D0F8648C85}"
 #define InstAppVersion AppVersion
@@ -32,6 +32,9 @@
 #define Bin2026 "..\src\KhBatchRunner\bin\Release\DRW\2026"
 #define Addins2026 "{commonappdata}\Autodesk\Revit\Addins\2026"
 #define Payload2026 "{commonappdata}\Autodesk\Revit\Addins\2026\DrwHelper"
+#define Bin2027 "..\src\KhBatchRunner\bin\Release\DRW\2027"
+#define Addins2027 "{commonappdata}\Autodesk\Revit\Addins\2027"
+#define Payload2027 "{commonappdata}\Autodesk\Revit\Addins\2027\DrwHelper"
 
 [Setup]
 ; Own AppId (distinct from every other Kanghun installer) → its own Add/Remove entry.
@@ -70,36 +73,53 @@ Source: "{#Bin2026}\DrwHelper.pdb";        DestDir: "{#Payload2026}"; Check: Drw
 ; schedule and split a large run into groups).
 Source: "{#Bin2026}\KhBatchLauncher.exe";        DestDir: "{#Payload2026}"; Check: DrwYear('2026'); Flags: ignoreversion
 Source: "{#Bin2026}\KhBatchLauncher.exe.config"; DestDir: "{#Payload2026}"; Check: DrwYear('2026'); Flags: ignoreversion skipifsourcedoesntexist
+; --- Revit 2027 (net10) ---
+Source: "{#Bin2027}\DrwHelper.addin";      DestDir: "{#Addins2027}";  Check: DrwYear('2027'); Flags: ignoreversion
+Source: "{#Bin2027}\DrwHelper.dll";        DestDir: "{#Payload2027}"; Check: DrwYear('2027'); Flags: ignoreversion
+Source: "{#Bin2027}\DrwHelper.deps.json";  DestDir: "{#Payload2027}"; Check: DrwYear('2027'); Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#Bin2027}\DrwHelper.pdb";        DestDir: "{#Payload2027}"; Check: DrwYear('2027'); Flags: ignoreversion skipifsourcedoesntexist
+; Scheduled-run launcher, resolved relative to the loaded assembly (DRW's Batch Run can save a
+; schedule and split a large run into groups).
+Source: "{#Bin2027}\KhBatchLauncher.exe";        DestDir: "{#Payload2027}"; Check: DrwYear('2027'); Flags: ignoreversion
+Source: "{#Bin2027}\KhBatchLauncher.exe.config"; DestDir: "{#Payload2027}"; Check: DrwYear('2027'); Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 ; Desktop-toast identity with the Revit-year suffix RunNotification.PreferredToastAppId() asks for.
 Name: "{commonprograms}\Kanghun BIM\DRW Helper (Revit 2024)"; Filename: "{commonpf64}\Autodesk\Revit 2024\Revit.exe"; AppUserModelID: "Kanghun.DrwHelper.2024"; Check: DrwYear('2024')
 Name: "{commonprograms}\Kanghun BIM\DRW Helper (Revit 2026)"; Filename: "{commonpf64}\Autodesk\Revit 2026\Revit.exe"; AppUserModelID: "Kanghun.DrwHelper.2026"; Check: DrwYear('2026')
+Name: "{commonprograms}\Kanghun BIM\DRW Helper (Revit 2027)"; Filename: "{commonpf64}\Autodesk\Revit 2027\Revit.exe"; AppUserModelID: "Kanghun.DrwHelper.2027"; Check: DrwYear('2027')
 
 [UninstallDelete]
 Type: files; Name: "{#Addins2024}\DrwHelper.addin"
 Type: dirifempty; Name: "{#Payload2024}"
 Type: files; Name: "{#Addins2026}\DrwHelper.addin"
 Type: dirifempty; Name: "{#Payload2026}"
+Type: files; Name: "{#Addins2027}\DrwHelper.addin"
+Type: dirifempty; Name: "{#Payload2027}"
 
 [Messages]
-WelcomeLabel2=This will install [name] for Autodesk Revit 2024 and 2026 (the versions found on this PC), into the all-users Addins folder — it installs for every user and requires admin.%n%nClose Revit before continuing so the files are not locked.
+WelcomeLabel2=This will install [name] for Autodesk Revit 2024, 2026 and 2027 (the versions found on this PC), into the all-users Addins folder — it installs for every user and requires admin.%n%nClose Revit before continuing so the files are not locked.
 
 [Code]
 #include "InstallerCommon.iss"
 
-{ A year gets DRW Helper where its Revit is installed. With neither found, 2026 is pre-staged —
+{ A year gets DRW Helper where its Revit is installed. With none found, 2026 is pre-staged —
   what this installer did when it was 2026-only. }
+function AnyDrwRevit(): Boolean;
+begin
+  Result := RevitInstalled('2024') or RevitInstalled('2026') or RevitInstalled('2027');
+end;
+
 function DrwYear(Year: String): Boolean;
 begin
-  if RevitInstalled('2024') or RevitInstalled('2026') then
+  if AnyDrwRevit() then
     Result := RevitInstalled(Year)
   else
     Result := (Year = '2026');
 end;
 
-{ Same start-up checks as the batch runner: Revit closed, warn (not block) when neither Revit 2024 nor
-  2026 is installed so IT can pre-stage, then offer upgrade/repair if already installed. }
+{ Same start-up checks as the batch runner: Revit closed, warn (not block) when no Revit 2024, 2026
+  or 2027 is installed so IT can pre-stage, then offer upgrade/repair if already installed. }
 function InitializeSetup(): Boolean;
 begin
   Result := True;
@@ -108,10 +128,10 @@ begin
     Result := False;
     Exit;
   end;
-  if not RevitInstalled('2024') and not RevitInstalled('2026') then
+  if not AnyDrwRevit() then
     if WizardSilent() then
-      Log('Neither Revit 2024 nor 2026 detected — continuing silent install for 2026 (pre-staging).')
-    else if MsgBox('Neither Autodesk Revit 2024 nor 2026 was detected on this PC.'#13#10#13#10 +
+      Log('No Revit 2024, 2026 or 2027 detected — continuing silent install for 2026 (pre-staging).')
+    else if MsgBox('No Autodesk Revit 2024, 2026 or 2027 was detected on this PC.'#13#10#13#10 +
                    'Install for Revit 2026 anyway?',
                    mbConfirmation, MB_YESNO) = IDNO then
     begin
@@ -139,6 +159,11 @@ begin
     if Years <> '' then Years := Years + ', ';
     Years := Years + '2026';
   end;
+  if DrwYear('2027') then
+  begin
+    if Years <> '' then Years := Years + ', ';
+    Years := Years + '2027';
+  end;
   Result := 'DRW Helper will be installed for Revit:' + NewLine + Space + Years + NewLine;
 end;
 
@@ -154,6 +179,7 @@ begin
     RemoveOtherViewInstall();
     RemovePerUserCopies('DrwHelper', '2024');
     RemovePerUserCopies('DrwHelper', '2026');
+    RemovePerUserCopies('DrwHelper', '2027');
   end;
 end;
 

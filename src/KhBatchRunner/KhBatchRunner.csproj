@@ -1,19 +1,22 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Multi-version build: switch the target Revit release with -p:RevitVersion=2024|2025|2026
+    Multi-version build: switch the target Revit release with -p:RevitVersion=2024|2025|2026|2027
     (default 2026, set in Directory.Build.props). Revit 2024 runs add-ins on .NET Framework
-    4.8; 2025/2026 run on .NET 8 — so the TFM is derived from RevitVersion below. Output and
-    obj are per-version so the net48 (2024) and net8 (2025/2026) artifacts never mix.
+    4.8; 2025/2026 run on .NET 8; 2027 runs on .NET 10 — so the TFM is derived from RevitVersion
+    below. Output and obj are per-version so the net48, net8 and net10 artifacts never mix.
   -->
   <PropertyGroup>
     <RevitVersion Condition="'$(RevitVersion)' == ''">2026</RevitVersion>
-    <!-- 2024 = .NET Framework 4.8; 2025/2026 = .NET 8. -->
+    <!-- 2024 = .NET Framework 4.8; 2025/2026 = .NET 8; 2027 = .NET 10 (needs the .NET 10 SDK). -->
     <TargetFramework Condition="'$(RevitVersion)' == '2024'">net48</TargetFramework>
+    <TargetFramework Condition="'$(RevitVersion)' == '2027'">net10.0-windows</TargetFramework>
     <TargetFramework Condition="'$(TargetFramework)' == ''">net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <UseWPF>true</UseWPF>
-    <LangVersion>latest</LangVersion>
+    <!-- Pinned, not "latest": with the .NET 10 SDK installed "latest" becomes C# 14, whose span rules
+         rebind calls such as array.Reverse() on the net48/net8 builds. 12.0 is what the .NET 8 SDK meant. -->
+    <LangVersion>12.0</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- DRW Helper: the drawing-production ribbon (active-model view creation + annotation). Own
@@ -137,7 +140,7 @@
        Revit updated itself to 2026.5, whose RevitAPI.dll needs .NET 10 and so cannot be compiled
        against with the .NET 8 SDK — and a build against it would not load in 2026.0–2026.4 anyway.
        2026.4.10 is the newest 2026 API on .NET 8; the output loads in 2026.5 too. -->
-  <ItemGroup Condition="'$(RevitVersion)' != '2025' and !('$(RevitVersion)' == '2026' and '$(RevitApiFromNuGet)' == 'true')">
+  <ItemGroup Condition="'$(RevitVersion)' != '2025' and !(('$(RevitVersion)' == '2026' or '$(RevitVersion)' == '2027') and '$(RevitApiFromNuGet)' == 'true')">
     <Reference Include="RevitAPI">
       <HintPath>$(RevitApiDir)\RevitAPI.dll</HintPath>
       <Private>false</Private>
@@ -157,8 +160,14 @@
     <PackageReference Include="Nice3point.Revit.Api.RevitAPI"   Version="2026.4.10" ExcludeAssets="runtime" />
     <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2026.4.10" ExcludeAssets="runtime" />
   </ItemGroup>
+  <!-- Revit 2027 (.NET 10): NuGet reference assemblies when 2027 is not installed on the build PC. -->
+  <ItemGroup Condition="'$(RevitVersion)' == '2027' and '$(RevitApiFromNuGet)' == 'true'">
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI"   Version="2027.3.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2027.3.0" ExcludeAssets="runtime" />
+  </ItemGroup>
 
-  <ItemGroup>
+  <!-- Not for 2027: System.Text.Json is part of .NET 10 itself, and the SDK warns (NU1510) about the package. -->
+  <ItemGroup Condition="'$(RevitVersion)' != '2027'">
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
   </ItemGroup>
 

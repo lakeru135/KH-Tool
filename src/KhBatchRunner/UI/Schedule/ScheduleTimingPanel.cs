@@ -82,6 +82,8 @@ internal sealed class ScheduleTimingPanel : TableLayoutPanel
         UpdateEnabled();
     }
 
+    // Not designer-serialized: .NET 9+ WinForms (the Revit 2027 build) makes an undeclared property an error (WFO1000).
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public string ScheduleName
     {
         get => _nameBox.Text;

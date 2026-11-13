@@ -68,6 +68,8 @@ public sealed class StatusLine : Control
     /// Sunken (the default, as the old Label strip looked), single line, or none. Drawn by Windows
     /// through the window style, exactly as a Label draws its own.
     /// </summary>
+    // Not designer-serialized: .NET 9+ WinForms (the Revit 2027 build) makes an undeclared property an error (WFO1000).
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public BorderStyle BorderStyle
     {
         get => _borderStyle;
@@ -94,6 +96,7 @@ public sealed class StatusLine : Control
     /// The title the details window opens with. Set by the host form (its own <c>Text</c>) so the
     /// details of a failed save say which dialog they came from.
     /// </summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public string DetailsTitle { get; set; } = "Details";
 
     /// <summary>

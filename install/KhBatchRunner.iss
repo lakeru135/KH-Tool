@@ -1,6 +1,6 @@
 ; Inno Setup script for the KH Batch Script Runner Revit add-in.
 ;
-; ONE installer covering Revit 2024 + 2025 + 2026 (replaces the old per-year /DRevitYear
+; ONE installer covering Revit 2024 + 2025 + 2026 + 2027 (replaces the old per-year /DRevitYear
 ; builds). All-users install (requires admin) into the machine-wide Revit Addins folder
 ; (%ProgramData%). Chosen so that on managed laptops where install runs elevated under a
 ; *different* admin account, the add-in still loads for the logged-in user (a per-user
@@ -14,11 +14,11 @@
 ; every Revit as missing. A single un-suffixed AppId means one Add/Remove entry; the legacy
 ; year-suffixed installs (0.1.x) are quietly uninstalled first so years aren't double-registered.
 ;
-; Build the three Release bin trees first, then compile — see install\Build-Installer.ps1,
+; Build the per-year Release bin trees first, then compile — see install\Build-Installer.ps1,
 ; which runs the builds and then ISCC.exe on this script.
 
 #define AppName "KH Batch Script Runner for Autodesk Forma"
-#define AppVersion "2.1.0.1"
+#define AppVersion "2.1.0.2"
 ; AppId (single-brace literal, matches [Setup]) + version, consumed by InstallerCommon.iss.
 #define InstAppId "{7E2C4D8A-3F51-4B9C-9E1D-2A6F0B4C8D31}"
 #define InstAppVersion AppVersion
@@ -34,14 +34,17 @@
   #define Bin2024 "..\src\KhBatchRunner\bin\Release\FullUnlimited\2024"
   #define Bin2025 "..\src\KhBatchRunner\bin\Release\FullUnlimited\2025"
   #define Bin2026 "..\src\KhBatchRunner\bin\Release\FullUnlimited\2026"
+  #define Bin2027 "..\src\KhBatchRunner\bin\Release\FullUnlimited\2027"
   #define SetupBaseName "KhBatchRunner-Setup-Unlimited"
   #define UninstallName AppName + " (Unlimited)"
 #else
 ; Per-year Release build output (src\KhBatchRunner\bin\Release\<year>\). The 2024 tree is
-; net48 and also carries System.Text.Json + transitives; 2025/2026 are net8 (dll + deps.json).
+; net48 and also carries System.Text.Json + transitives; 2025/2026 are net8 and 2027 is net10
+; (dll + deps.json).
   #define Bin2024 "..\src\KhBatchRunner\bin\Release\2024"
   #define Bin2025 "..\src\KhBatchRunner\bin\Release\2025"
   #define Bin2026 "..\src\KhBatchRunner\bin\Release\2026"
+  #define Bin2027 "..\src\KhBatchRunner\bin\Release\2027"
   #define SetupBaseName "KhBatchRunner-Setup"
   #define UninstallName AppName
 #endif
@@ -102,6 +105,15 @@ Source: "{#Bin2026}\KhBatchLauncher.exe";      DestDir: "{commonappdata}\Autodes
 Source: "{#Bin2026}\KhBatchLauncher.exe.config"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2026"; Check: RevitInstalled('2026'); Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#Bin2026}\KhMcp\*"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2026\KhMcp"; Check: RevitInstalled('2026'); Flags: ignoreversion
 
+; --- Revit 2027 (net10 — dll + deps.json) ---
+Source: "{#Bin2027}\*.dll";                     DestDir: "{commonappdata}\Autodesk\Revit\Addins\2027"; Check: RevitInstalled('2027'); Flags: ignoreversion
+Source: "{#Bin2027}\KhBatchRunner.deps.json";  DestDir: "{commonappdata}\Autodesk\Revit\Addins\2027"; Check: RevitInstalled('2027'); Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#Bin2027}\KhBatchRunner.addin";      DestDir: "{commonappdata}\Autodesk\Revit\Addins\2027"; Check: RevitInstalled('2027'); Flags: ignoreversion
+Source: "{#Bin2027}\KhBatchRunner.pdb";        DestDir: "{commonappdata}\Autodesk\Revit\Addins\2027"; Check: RevitInstalled('2027'); Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#Bin2027}\KhBatchLauncher.exe";      DestDir: "{commonappdata}\Autodesk\Revit\Addins\2027"; Check: RevitInstalled('2027'); Flags: ignoreversion
+Source: "{#Bin2027}\KhBatchLauncher.exe.config"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2027"; Check: RevitInstalled('2027'); Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#Bin2027}\KhMcp\*"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2027\KhMcp"; Check: RevitInstalled('2027'); Flags: ignoreversion
+
 ; POLICY-SAFE LAUNCHER COPY. A managed PC refused the ProgramData copy outright — "This program is
 ; blocked by group policy" — because the default Software Restriction Policy / AppLocker rule sets
 ; permit %ProgramFiles% and %WinDir% and deny everywhere else, and %ProgramData% is the classic
@@ -133,6 +145,8 @@ Source: "Collect-ScheduleDiagnostics.ps1"; DestDir: "{commonappdata}\Autodesk\Re
 Source: "Collect-Diagnostics.cmd";         DestDir: "{commonappdata}\Autodesk\Revit\Addins\2025\Support"; Check: RevitInstalled('2025'); Flags: ignoreversion
 Source: "Collect-ScheduleDiagnostics.ps1"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2026\Support"; Check: RevitInstalled('2026'); Flags: ignoreversion
 Source: "Collect-Diagnostics.cmd";         DestDir: "{commonappdata}\Autodesk\Revit\Addins\2026\Support"; Check: RevitInstalled('2026'); Flags: ignoreversion
+Source: "Collect-ScheduleDiagnostics.ps1"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2027\Support"; Check: RevitInstalled('2027'); Flags: ignoreversion
+Source: "Collect-Diagnostics.cmd";         DestDir: "{commonappdata}\Autodesk\Revit\Addins\2027\Support"; Check: RevitInstalled('2027'); Flags: ignoreversion
 
 [Registry]
 ; The "Open log" link on a failure notification. A toast CANNOT activate a file: URI — Windows
@@ -160,6 +174,7 @@ Root: HKLM; Subkey: "Software\Classes\accbatchlog\shell\open\command"; ValueType
 Name: "{commonprograms}\Kanghun BIM\KH Batch Script Runner (Revit 2024)"; Filename: "{commonpf64}\Autodesk\Revit 2024\Revit.exe"; AppUserModelID: "Kanghun.KhBatchRunner.2024"; Check: RevitInstalled('2024')
 Name: "{commonprograms}\Kanghun BIM\KH Batch Script Runner (Revit 2025)"; Filename: "{commonpf64}\Autodesk\Revit 2025\Revit.exe"; AppUserModelID: "Kanghun.KhBatchRunner.2025"; Check: RevitInstalled('2025')
 Name: "{commonprograms}\Kanghun BIM\KH Batch Script Runner (Revit 2026)"; Filename: "{commonpf64}\Autodesk\Revit 2026\Revit.exe"; AppUserModelID: "Kanghun.KhBatchRunner.2026"; Check: RevitInstalled('2026')
+Name: "{commonprograms}\Kanghun BIM\KH Batch Script Runner (Revit 2027)"; Filename: "{commonpf64}\Autodesk\Revit 2027\Revit.exe"; AppUserModelID: "Kanghun.KhBatchRunner.2027"; Check: RevitInstalled('2027')
 ; Reporting a failed scheduled run used to mean finding a support script under %ProgramData% and
 ; typing a 32-character job id. This shortcut needs neither: it collects every job on the PC and
 ; leaves one ZIP on the Desktop. It is the only thing a tester has to be told to click.
@@ -194,15 +209,16 @@ Type: files; Name: "{commonprograms}\Kanghun BIM\ACC Batch Script Runner (Revit 
 Type: filesandordirs; Name: "{commonappdata}\Kanghun BIM\ACC Batch Script Runner"
 
 [UninstallDelete]
-; The .addin is the same file in each year folder; remove all three on uninstall. Individual
+; The .addin is the same file in each year folder; remove every year's on uninstall. Individual
 ; DLLs are removed by Inno's normal file tracking; these lines also clean the year folders'
 ; manifest even if the folder pre-existed.
 Type: files; Name: "{commonappdata}\Autodesk\Revit\Addins\2024\KhBatchRunner.addin"
 Type: files; Name: "{commonappdata}\Autodesk\Revit\Addins\2025\KhBatchRunner.addin"
 Type: files; Name: "{commonappdata}\Autodesk\Revit\Addins\2026\KhBatchRunner.addin"
+Type: files; Name: "{commonappdata}\Autodesk\Revit\Addins\2027\KhBatchRunner.addin"
 
 [Messages]
-WelcomeLabel2=This will install [name] for the Autodesk Revit versions detected on this PC (2024/2025/2026 — the detected list is shown on the Ready page), into the all-users Addins folder. It installs for every user and requires admin.%n%nClose Revit before continuing so the files are not locked.
+WelcomeLabel2=This will install [name] for the Autodesk Revit versions detected on this PC (2024/2025/2026/2027 — the detected list is shown on the Ready page), into the all-users Addins folder. It installs for every user and requires admin.%n%nClose Revit before continuing so the files are not locked.
 
 [Code]
 #include "InstallerCommon.iss"
@@ -222,9 +238,9 @@ begin
       /SUPPRESSMSGBOXES, so showing one during a silent install would hang the process on an
       invisible dialog instead of failing. Log and abort with a non-zero exit code instead. }
     if WizardSilent() then
-      Log('No supported Revit (2024/2025/2026) detected — aborting silent install.')
+      Log('No supported Revit (2024/2025/2026/2027) detected — aborting silent install.')
     else
-      MsgBox('No supported Autodesk Revit version (2024, 2025 or 2026) was detected under ' +
+      MsgBox('No supported Autodesk Revit version (2024, 2025, 2026 or 2027) was detected under ' +
              ExpandConstant('{commonpf64}\Autodesk') + '.'#13#10#13#10 +
              'Install Revit first, then run this setup again.', mbError, MB_OK);
     Result := False;
@@ -300,6 +316,7 @@ begin
     RemovePerUserCopies('KhBatchRunner', '2024');
     RemovePerUserCopies('KhBatchRunner', '2025');
     RemovePerUserCopies('KhBatchRunner', '2026');
+    RemovePerUserCopies('KhBatchRunner', '2027');
     { 4. LEGACY (1.x): the retired second edition, and per-user copies under the 1.x file name. }
     RemoveRetiredEditionInstall();
     RemovePerUserCopies('AccBatchRunner', '2024');
