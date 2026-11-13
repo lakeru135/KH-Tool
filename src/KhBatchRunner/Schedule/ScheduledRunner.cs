@@ -223,6 +223,15 @@ public static partial class ScheduledRunner
             {
                 _hlStarted = true;
 
+                // Where the start-up went, once per instance: Revit launch to the first Idling tick,
+                // then the stagger and first-open gate this instance was told to wait out.
+                long sinceLaunch = Diagnostics.PhaseTimings.SinceProcessStartMs();
+                long startWait = (long)(DateTime.UtcNow - _hlFirstIdlingAt).TotalMilliseconds;
+                if (sinceLaunch >= 0)
+                    Diagnostics.PhaseTimings.RunEvent("launch-to-first-idle", Math.Max(0, sinceLaunch - startWait));
+                Diagnostics.PhaseTimings.RunEvent("stagger-and-gate-wait", startWait,
+                    $"stagger asked {_hlJob.FirstOpenDelaySeconds}s");
+
                 // Expiry gate (no dialog — nobody is watching a headless run): if the remote
                 // manifest, or this build's own fallback date, says it may no longer run, skip the
                 // whole job and note WHY to the schedule's error log, then quit. Decides from the

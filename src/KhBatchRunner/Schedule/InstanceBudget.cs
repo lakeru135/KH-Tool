@@ -410,6 +410,19 @@ internal static class InstanceBudget
         catch { return ""; }
     }
 
+    /// <summary>Free physical memory in MB, or -1 when it cannot be read. The number behind
+    /// <see cref="FreeMemoryNote"/>, for <see cref="Diagnostics.PhaseTimings"/>.</summary>
+    public static long FreeMemoryMb()
+    {
+        try
+        {
+            var status = new MemoryStatusEx { dwLength = (uint)Marshal.SizeOf(typeof(MemoryStatusEx)) };
+            if (!GlobalMemoryStatusEx(ref status)) return -1;
+            return (long)(status.ullAvailPhys / (1024UL * 1024UL));
+        }
+        catch { return -1; }
+    }
+
     /// <summary>Describes the effective cap for a resolved run, naming the cloud stagger when the
     /// run has cloud models — that delay is visible as a slow start and should not read as a
     /// stall.</summary>

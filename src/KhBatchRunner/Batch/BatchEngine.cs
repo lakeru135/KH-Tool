@@ -245,6 +245,7 @@ public sealed partial class BatchEngine
         // worksets-closed document — can look this model up in the workset audit. A detached
         // document cannot say which cloud model it came from; only the engine knows.
         ModelContext.Set(model);
+        Diagnostics.PhaseTimings.Begin(_action.Name, model.DisplayName);
         var timer = System.Diagnostics.Stopwatch.StartNew();
         // A non-workshared cloud model opens with no workset configuration — see CloudOpenFacts.
         (CloudOpenMode mode, string source) = CloudOpenFacts.PlanFor(model);
@@ -255,13 +256,17 @@ public sealed partial class BatchEngine
         // liveness signal, and only the open stage on the trail keeps that silence from being read
         // as a stall (Schedule.ChildLiveness.IsOpening). Released when this method returns, so the
         // reopen below is covered too — it is another open, and the same extension runs again.
+        var gateTimer = System.Diagnostics.Stopwatch.StartNew();
         using IDisposable openGate = Schedule.CloudOpenGate.Acquire(
             _action.SerialisesCloudOpens && Schedule.ChunkContext.GroupNumber > 0,
             _uiApp.Application.VersionNumber);
+        Diagnostics.PhaseTimings.Add("open-gate-wait", gateTimer.ElapsedMilliseconds);
         // Again after the gate: its wait note is a trail line of its own, and a crash inside the open
         // must leave the OPEN as this pid's last line, or the supervisor cannot say which model died.
         if (_action.SerialisesCloudOpens && Schedule.ChunkContext.GroupNumber > 0) Trace(model, openStage);
-        Document doc = OpenModel(model, detached, activate: false, mode: mode);
+        Document doc;
+        using (Diagnostics.PhaseTimings.Time("first-open"))
+            doc = OpenModel(model, detached, activate: false, mode: mode);
         // An action that must EDIT workset-owned elements (Internal Relink's LoadFrom) may
         // need specific worksets open — only settable at open time, so this closes and
         // reopens with exactly those worksets open. No-op for every other action.
@@ -286,6 +291,7 @@ public sealed partial class BatchEngine
         // Re-published here too: a pass that JOINS a document an earlier pass opened never went
         // through the open above, and would otherwise run under the previous model's identity.
         ModelContext.Set(model);
+        Diagnostics.PhaseTimings.SetAction(_action.Name);
         string status;
         string message;
         try
@@ -293,11 +299,14 @@ public sealed partial class BatchEngine
             Trace(model, reusing ? BatchStages.ActionRunReusing : BatchStages.ActionRun);
             var timer = System.Diagnostics.Stopwatch.StartNew();
             // One locked write for the whole model, not one per row — see DetailCsvLogger.LogMany.
-            state.Detail.LogMany(model.DisplayName, _action.RunDetailRows(_uiApp, doc));
+            using (Diagnostics.PhaseTimings.Time("run"))
+                state.Detail.LogMany(model.DisplayName, _action.RunDetailRows(_uiApp, doc));
             Trace(model, $"ran in {timer.ElapsedMilliseconds} ms");
 
             Trace(model, "persist");
-            string syncNote = Persist(doc);
+            string syncNote;
+            using (Diagnostics.PhaseTimings.Time("persist"))
+                syncNote = Persist(doc);
             Trace(model, "persisted (" + syncNote + ")");
             status = "OK";
             // The action may contribute a one-line roll-up for this model (e.g. Isolate's
@@ -339,7 +348,10 @@ public sealed partial class BatchEngine
         // batch itself always closes as it goes.
         CloseWithoutSaving(doc);
         CleanupPendingLocal();
+        Diagnostics.PhaseTimings.Add("close", timer.ElapsedMilliseconds);
         Trace(model, $"closed in {timer.ElapsedMilliseconds} ms");
+        // After the close mark, never before: see PhaseTimings on why nothing is marked mid-stage.
+        Diagnostics.PhaseTimings.End();
     }
 
     /// <summary>
