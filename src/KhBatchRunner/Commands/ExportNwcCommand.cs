@@ -66,17 +66,20 @@ public sealed class ExportNwcCommand : IExternalCommand
                     inputs.DestinationFolder, inputs.ProjectLogName)
                 ? Result.Succeeded : Result.Cancelled;
 
-        ModelPreset? selected = presets.FirstOrDefault(p =>
-            p.Name.Equals(dialog.SelectedModelSetName, StringComparison.OrdinalIgnoreCase));
-        if (selected is null)
+        // One or more model sets, combined into a single de-duplicated run — the combiner Batch Run
+        // and the Check/Action buttons use. A folder-backed set is re-scanned to its current members
+        // there, and the notes report a set that is gone or a model this Revit cannot run.
+        IReadOnlyList<string> setNames = dialog.SelectedModelSetNames;
+        ModelPreset chosen = ModelPresetCombiner.Combine(
+            setNames.Count == 1 ? setNames[0] : "Export NWC", setNames, Array.Empty<CloudModel>(),
+            out List<string> setNotes);
+        if (chosen.Models.Count == 0)
         {
-            TaskDialog.Show("Export NWC", "That model set could not be loaded.");
+            TaskDialog.Show("Export NWC",
+                "The ticked model set(s) have no models to run." +
+                (setNotes.Count > 0 ? "\n\n" + string.Join("\n", setNotes) : ""));
             return Result.Failed;
         }
-
-        // A folder-backed set is re-scanned to its current members here, and the note reports any
-        // model left out because this Revit cannot run it.
-        ModelPreset chosen = PresetResolver.Resolve(selected, out string? setNote);
         var action = new ExportNwcAction(inputs, year);
 
         // Parallel auto-split, same shape as Cut model: every model is opened read-only and each
@@ -103,7 +106,7 @@ public sealed class ExportNwcCommand : IExternalCommand
             chosen.Models, splitEnabled: true, action.Name, BatchCompletion.CloseDocuments);
         if (split.HasValue) return split.Value;
 
-        if (setNote != null) Diagnostics.RunTrace.Mark(setNote);
+        foreach (string note in setNotes) Diagnostics.RunTrace.Mark(note);
 
         // The modal message-loop runner, not BatchIdlingDriver — these are usually Forma cloud
         // models. Inside it the export takes the ordinary background path (NeedsActiveDocument is

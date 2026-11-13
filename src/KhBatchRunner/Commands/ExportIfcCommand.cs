@@ -50,15 +50,20 @@ public sealed class ExportIfcCommand : IExternalCommand
                     inputs.DestinationFolder, inputs.ProjectLogName)
                 ? Result.Succeeded : Result.Cancelled;
 
-        ModelPreset? selected = presets.FirstOrDefault(p =>
-            p.Name.Equals(dialog.SelectedModelSetName, StringComparison.OrdinalIgnoreCase));
-        if (selected is null)
+        // One or more model sets, combined into a single de-duplicated run — the combiner Batch Run
+        // and the Check/Action buttons use. A folder-backed set is re-scanned to its current members
+        // there, and the notes report a set that is gone or a model this Revit cannot run.
+        IReadOnlyList<string> setNames = dialog.SelectedModelSetNames;
+        ModelPreset chosen = ModelPresetCombiner.Combine(
+            setNames.Count == 1 ? setNames[0] : "Export IFC + Data", setNames, Array.Empty<CloudModel>(),
+            out List<string> setNotes);
+        if (chosen.Models.Count == 0)
         {
-            TaskDialog.Show("Export IFC + Data", "That model set could not be loaded.");
+            TaskDialog.Show("Export IFC + Data",
+                "The ticked model set(s) have no models to run." +
+                (setNotes.Count > 0 ? "\n\n" + string.Join("\n", setNotes) : ""));
             return Result.Failed;
         }
-
-        ModelPreset chosen = PresetResolver.Resolve(selected, out string? setNote);
         var action = new ExportIfcDataAction(inputs);
 
         // Parallel auto-split, same shape as Export NWC: every model is opened read-only and lands in
@@ -79,7 +84,7 @@ public sealed class ExportIfcCommand : IExternalCommand
             chosen.Models, splitEnabled: true, action.Name, BatchCompletion.CloseDocuments);
         if (split.HasValue) return split.Value;
 
-        if (setNote != null) Diagnostics.RunTrace.Mark(setNote);
+        foreach (string note in setNotes) Diagnostics.RunTrace.Mark(note);
 
         // The modal message-loop runner, as Export NWC: cloud opens hang from an Idling event.
         return BatchCommandFlow.RunModal(uiApp, action, chosen, inputs.DestinationFolder,

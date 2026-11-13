@@ -21,7 +21,7 @@
 ; Build the DRW Release bin trees first, then compile — see install\Build-Installer-Drw-2026.ps1.
 
 #define AppName "DRW Helper"
-#define AppVersion "2.1.0.0"
+#define AppVersion "2.1.0.1"
 ; AppId (single-brace literal, matches [Setup]) + version, consumed by InstallerCommon.iss.
 #define InstAppId "{753E7E24-9663-4DFE-844D-52D0F8648C85}"
 #define InstAppVersion AppVersion

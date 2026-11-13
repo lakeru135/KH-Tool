@@ -28,7 +28,7 @@ public sealed class ExportIfcWindow : Form
     private readonly TextBox _extraParamsBox;
     private readonly TextBox _keepDaysBox;
 
-    private readonly ListBox _modelSetsList;
+    private readonly DimmableCheckedListBox _modelSetsList;
     private readonly TextBox _destBox;
     private readonly TextBox _projectLogBox;
     private readonly CheckBox? _activeModelCheck;
@@ -37,9 +37,9 @@ public sealed class ExportIfcWindow : Form
     /// <summary>The options to run with, set only when the user chose Run. Null on Close.</summary>
     public ExportIfcInputSet? RunSpec { get; private set; }
 
-    /// <summary>The model set to run over, when <see cref="RunSpec"/> is set and
-    /// <see cref="RunOnActiveModel"/> is false.</summary>
-    public string SelectedModelSetName { get; private set; } = "";
+    /// <summary>The model sets to run over (one or more, combined into a single run), when
+    /// <see cref="RunSpec"/> is set and <see cref="RunOnActiveModel"/> is false.</summary>
+    public IReadOnlyList<string> SelectedModelSetNames { get; private set; } = Array.Empty<string>();
 
     /// <summary>True when the user chose to export the model open in Revit rather than a model set.
     /// Set only when the window was given an active model name.</summary>
@@ -123,10 +123,15 @@ public sealed class ExportIfcWindow : Form
         _keepDaysBox = new TextBox { Text = "14", Width = 60 };
         var keepRow = FormLayout.FlowRow(_keepDaysBox, Inline("days (0 = keep every run)"));
 
-        _modelSetsList = new ListBox { Dock = DockStyle.Fill, SelectionMode = SelectionMode.One };
+        // A tick list, not a single-select list: one or more sets, combined into one run — the same
+        // control and the same rule as the Check/Action buttons (RunActionWindow).
+        _modelSetsList = new DimmableCheckedListBox { Dock = DockStyle.Fill, CheckOnClick = true, IntegralHeight = false };
         ModelSetAccess.AttachGreying(_modelSetsList, i => (i as SetItem)?.Preset,
             onSnapshotReady: RefreshModelSets);
         RefreshModelSets();
+        if (_modelSetsList.Items.Count == 1)
+            _modelSetsList.SetItemChecked(0, true);
+        CheckListBehavior.EnableRangeCheck(_modelSetsList);
 
         _destBox = new TextBox { Text = Settings.UserSettings.DefaultDestinationFolder };
         _projectLogBox = new TextBox { Text = "Export IFC + Data" };
@@ -181,7 +186,7 @@ public sealed class ExportIfcWindow : Form
         FormLayout.AddAutoRow(root, grid);
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Extra parameters (comma separated):", _extraParamsBox));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Keep runs for:", keepRow));
-        FormLayout.AddAutoRow(root, new Label { Text = "Model set to run over:", AutoSize = true });
+        FormLayout.AddAutoRow(root, new Label { Text = "Model set(s) to run over:", AutoSize = true });
         FormLayout.AddFillRow(root, _modelSetsList, 100);
         if (_activeModelCheck != null)
             FormLayout.AddAutoRow(root, _activeModelCheck);
@@ -283,10 +288,10 @@ public sealed class ExportIfcWindow : Form
     {
         ExportIfcInputSet set = Current(_loadedSetName ?? "");
         bool active = _activeModelCheck?.Checked == true;
-        var chosen = _modelSetsList.SelectedItem as SetItem;
-        if (!active && chosen is null)
+        List<string> chosen = _modelSetsList.CheckedItems.Cast<SetItem>().Select(i => i.Preset.Name).ToList();
+        if (!active && chosen.Count == 0)
         {
-            SetStatus("Select the model set to run over.");
+            SetStatus("Tick at least one model set to run over.");
             return;
         }
         if (!set.HasOutput)
@@ -300,7 +305,7 @@ public sealed class ExportIfcWindow : Form
             Settings.UserSettings.LastDestinationFolder = set.DestinationFolder;
         RunSpec = set;
         RunOnActiveModel = active;
-        SelectedModelSetName = chosen?.Preset.Name ?? "";
+        SelectedModelSetNames = active ? Array.Empty<string>() : chosen;
         DialogResult = DialogResult.OK;
         Close();
     }
@@ -330,13 +335,15 @@ public sealed class ExportIfcWindow : Form
 
     private void RefreshModelSets()
     {
-        string? keep = (_modelSetsList.SelectedItem as SetItem)?.Preset.Name;
+        var ticked = new HashSet<string>(
+            _modelSetsList.CheckedItems.Cast<SetItem>().Select(i => ModelSetAccess.SetKey(i.Preset)),
+            StringComparer.OrdinalIgnoreCase);
         _modelSetsList.BeginUpdate();
         _modelSetsList.Items.Clear();
         foreach (ModelPreset p in ModelSetAccess.VisibleSets())
         {
             int i = _modelSetsList.Items.Add(new SetItem(p));
-            if (keep != null && p.Name == keep) _modelSetsList.SelectedIndex = i;
+            if (ticked.Contains(ModelSetAccess.SetKey(p))) _modelSetsList.SetItemChecked(i, true);
         }
         _modelSetsList.EndUpdate();
     }

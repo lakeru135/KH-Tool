@@ -799,6 +799,12 @@ internal static class Program
         yield return ("ExportNwcWindow", () => new ExportNwcWindow());
         yield return ("ExportIfcWindow", () => new ExportIfcWindow());
         yield return ("BatchLinkRvtWindow", () => new BatchLinkRvtWindow(PreviewPresets(), client));
+        // The same three with a project model open, which adds the "Run on active model only" row.
+        // A row that only exists in one state is a row the layout gate never measured: the first
+        // build with it was tested with the checkbox found by name, not seen.
+        yield return ("ExportNwcWindow-Active", () => new ExportNwcWindow("Test Model"));
+        yield return ("ExportIfcWindow-Active", () => new ExportIfcWindow("Test Model"));
+        yield return ("BatchLinkRvtWindow-Active", () => new BatchLinkRvtWindow(PreviewPresets(), client, "Test Model"));
         // 1.4.7 closes the hole the previous comment here admitted to. Relink and Correct Workset
         // "are still missing from this list, which is how a window skips both gates entirely" — and
         // 1.4.7 puts a Duplicate button in all four of these, which is exactly the kind of edit that

@@ -38,7 +38,7 @@ internal static class Product
 #endif
 
     // One version line for every edition: the public repository starts at 2.0.0.
-    public const string Version = "2.1.0.0";
+    public const string Version = "2.1.0.1";
     public const string Publisher = "Kanghun BIM";
 
     /// <summary>
@@ -128,6 +128,12 @@ internal static class Product
         "• Setting: Model Set, Batch Run, Sync View.";
 #else
     public const string Changelog =
+        "KH-Tool (2.1.0.1) — review build:\n" +
+        "• Export NWC and Export IFC + Data: tick several model sets for one run, or run on the " +
+        "model that is open (\"Run on active model only\" appears when a project is open).\n" +
+        "• Batch Link RVT can also run on the open model; nothing is saved or synced.\n" +
+        "• Saving, renaming, duplicating and deleting a saved set now behaves the same in every " +
+        "dialog, and every folder box starts on the last folder a run used.\n\n" +
         "KH-Tool (2.1.0):\n" +
         "• NWD Helper: new Export IFC + Data — exports IFC with element and room data as CSV. Runs " +
         "from its own button, Batch Run or Schedule Run. The .frag conversion for web viewers needs " +
