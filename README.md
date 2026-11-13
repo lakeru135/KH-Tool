@@ -2,7 +2,7 @@
 
 Batch run, schedule and check Revit models stored in **Autodesk Forma** (formerly ACC / BIM 360).
 
-**Works with:** Revit 2024 · 2025 · 2026 · Autodesk Forma · BIM 360
+**Works with:** Revit 2024 · 2025 · 2026 · 2027 · Autodesk Forma · BIM 360
 
 **New here?** Read the [KH-Tool handbook](https://claude.ai/artifact/CXSCchFSkXbCvrGTcaUpfw)
 (its source is kept in [`docs/handbook.html`](docs/handbook.html)): install,

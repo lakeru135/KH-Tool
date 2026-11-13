@@ -12,8 +12,8 @@ public sealed class StairAnnotationPreset : IDrwPreset
     public string PathTypeName { get; set; } = "";
     public bool PlaceNumbers { get; set; } = true;
 
-    // Tread/riser numbers, named and ordered as in Revit's Properties palette (Graphics). They have
-    // no type to choose — the "Number type" of 0.2.0–0.2.3 was an internal type Revit never shows —
+    // Tread/riser numbers, named and ordered as in Revit's Properties palette (Graphics). Up to Revit
+    // 2026 they have no type to choose (2027 gives them one; see SetNumberSizeByType) — the "Number type" of 0.2.0–0.2.3 was an internal type Revit never shows —
     // so every setting is written on each new number instead.
     /// <summary>"Riser" or "Tread" — the palette's Tag Type.</summary>
     public string TagType { get; set; } = "Riser";
@@ -161,16 +161,49 @@ internal static class StairAnnotator
             Try("Number Size", () =>
             {
 #if REVIT2027
-                // Revit 2027 removed NUMBER_SYSTEM_TEXT_SIZE (the number's text now comes from text
-                // overrides, NUMBER_SYSTEM_OVERRIDE_TEXT_PARAMS). Not ported yet: reported as not set.
-                Parameter? size = null;
+                if (!SetNumberSizeByType(ns, p.NumberSizeMm)) throw new InvalidOperationException();
 #else
                 Parameter? size = ns.get_Parameter(BuiltInParameter.NUMBER_SYSTEM_TEXT_SIZE);
-#endif
                 if (size == null || size.IsReadOnly || !size.Set(Mm(p.NumberSizeMm))) throw new InvalidOperationException();
+#endif
             });
         return string.Join(", ", failed);
     }
+
+#if REVIT2027
+    /// <summary>
+    /// Revit 2027 removed NUMBER_SYSTEM_TEXT_SIZE: a number now has a TYPE ("Stair Tread/Riser
+    /// Numbers : Standard") and the size is that type's Text Size (probed 2026-11-13, Revit 2027.4).
+    /// Changing the type's size would resize every number that uses it, so the number is moved to a
+    /// type of the wanted size instead: "&lt;type&gt; - &lt;size&gt;mm", duplicated from its current type
+    /// the first time that size is asked for.
+    /// </summary>
+    private static bool SetNumberSizeByType(NumberSystem ns, double sizeMm)
+    {
+        Document doc = ns.Document;
+        if (doc.GetElement(ns.GetTypeId()) is not ElementType current) return false;
+        double want = UnitUtils.ConvertToInternalUnits(sizeMm, UnitTypeId.Millimeters);
+        if (Math.Abs((current.get_Parameter(BuiltInParameter.TEXT_SIZE)?.AsDouble() ?? -1) - want) < 1e-9) return true;
+
+        // A type this tool made is named "<base> - <size>mm"; start again from <base> so a second
+        // size does not become "Standard - 2mm - 3mm".
+        string baseName = current.Name;
+        int cut = baseName.LastIndexOf(" - ", StringComparison.Ordinal);
+        if (cut > 0 && baseName.EndsWith("mm", StringComparison.Ordinal)) baseName = baseName.Substring(0, cut);
+        string name = baseName + " - " + sizeMm.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "mm";
+
+        ElementType? target = ns.GetValidTypes().Select(doc.GetElement).OfType<ElementType>()
+            .FirstOrDefault(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (target == null)
+        {
+            target = current.Duplicate(name);
+            Parameter? size = target.get_Parameter(BuiltInParameter.TEXT_SIZE);
+            if (size == null || size.IsReadOnly || !size.Set(want)) return false;
+        }
+        ns.ChangeTypeId(target.Id);
+        return true;
+    }
+#endif
 
     /// <summary>
     /// Sets an integer "choice" parameter by the text Revit shows for it ("Riser", "Tread"). Tag
