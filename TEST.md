@@ -237,7 +237,9 @@ once with the Full edition and once with DRW Helper:
    overwrite it (confirm prompt), duplicate it, delete it (confirm prompt).
 4. With a small local model open: tick "Run on active model only" in one simple check, Correct
    Workset, Export NWC, Export IFC + Data and Batch Link RVT. Each shows a result grid; nothing is
-   saved or synced, and the exports write their files.
+   saved or synced, and the exports write their files. With no project open, the checkbox is absent.
+   In Export NWC and Export IFC + Data, tick two small model sets and **Run**: every model of both
+   sets is exported once.
 5. One interactive **Batch Run** with "leave files open".
 6. **Edit Sets → Edit Model Set** with no model open: the tree loads your hubs, a folder lists its
    `.rvt` models, a saved set appears in every model-set list. If sign-in is missing, the dialog

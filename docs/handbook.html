@@ -1,0 +1,462 @@
+<title>KH-Tool Handbook</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Layout: a drawing-sheet handbook. Sticky contents rail on the left, numbered sections ruled
+     like a title block on the right. Numbers are real: the sections are read in order. */
+  :root {
+    --ground: #EDF0F3;
+    --surface: #FFFFFF;
+    --surface-sunk: #E4E9ED;
+    --ink: #151A21;
+    --ink-soft: #4A5560;
+    --ink-faint: #6E7A85;
+    --rule: #C6CFD7;
+    --rule-soft: #DBE2E8;
+    --accent: #0B6A73;
+    --safe: #2E6B45;
+    --care: #8A5300;
+    --danger: #A32B1E;
+    --display: Constantia, "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    --body: "Segoe UI Variable Text", "Segoe UI", -apple-system, system-ui, "Helvetica Neue", sans-serif;
+    --mono: "Cascadia Mono", Consolas, "SF Mono", ui-monospace, "Liberation Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #10151A; --surface: #171D23; --surface-sunk: #1E262D; --ink: #E3E9EE;
+      --ink-soft: #AEBAC4; --ink-faint: #8794A0; --rule: #2E3942; --rule-soft: #242D35;
+      --accent: #5FB8BF; --safe: #7FC49A; --care: #D8A552; --danger: #E58175; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #10151A; --surface: #171D23; --surface-sunk: #1E262D; --ink: #E3E9EE;
+    --ink-soft: #AEBAC4; --ink-faint: #8794A0; --rule: #2E3942; --rule-soft: #242D35;
+    --accent: #5FB8BF; --safe: #7FC49A; --care: #D8A552; --danger: #E58175; color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--body); font-size: 16.5px; line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .sheet {
+    max-width: 1160px; margin: 0 auto; padding-block: 0 96px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .masthead { border-bottom: 2px solid var(--ink); padding: clamp(32px, 6vw, 64px) 0 22px; margin-bottom: 40px; }
+  .stamp {
+    display: flex; flex-wrap: wrap; gap: 10px 18px; font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 20px;
+  }
+  .stamp .lead { color: var(--accent); }
+  h1 {
+    font-family: var(--display); font-weight: 400; font-size: clamp(2.3rem, 6vw, 3.8rem);
+    line-height: 1.04; letter-spacing: -.015em; margin: 0 0 18px; text-wrap: balance;
+  }
+  .standfirst { font-size: clamp(1.05rem, 2.3vw, 1.2rem); color: var(--ink-soft); max-width: 62ch; margin: 0; }
+  .standfirst strong { color: var(--ink); font-weight: 600; }
+
+  .frame { display: grid; grid-template-columns: minmax(0, 1fr); gap: 40px; align-items: start; }
+  @media (min-width: 900px) { .frame { grid-template-columns: 214px minmax(0, 1fr); gap: 56px; } }
+  @media (min-width: 900px) { nav.rail { position: sticky; top: calc(24px + env(safe-area-inset-top, 0px)); } }
+  nav.rail h2 {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-faint); font-weight: 600; margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--rule);
+  }
+  nav.rail ol { list-style: none; margin: 0; padding: 0; counter-reset: rail; }
+  nav.rail li { counter-increment: rail; }
+  nav.rail a {
+    display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 5px 0; color: var(--ink-soft);
+    text-decoration: none; font-size: 14.5px; line-height: 1.35; border-bottom: 1px solid var(--rule-soft);
+  }
+  nav.rail a::before { content: counter(rail, decimal-leading-zero); font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); padding-top: 2px; }
+  nav.rail a:hover, nav.rail a:hover::before { color: var(--accent); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  main { min-width: 0; }
+
+  section { margin-bottom: 60px; scroll-margin-top: 20px; }
+  .sec-head { display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: baseline; border-top: 2px solid var(--ink); padding-top: 14px; margin-bottom: 22px; }
+  .sec-num { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; color: var(--accent); }
+  h2.sec-title { font-family: var(--display); font-weight: 400; font-size: clamp(1.5rem, 3.4vw, 2.05rem); line-height: 1.15; margin: 0; text-wrap: balance; }
+  .sec-body { max-width: 68ch; min-width: 0; }
+  .sec-body.wide { max-width: none; }
+  @media (min-width: 900px) { .sec-body { margin-left: 52px; } }
+  p { margin: 0 0 1.05em; }
+  p:last-child { margin-bottom: 0; }
+  h3 { font-size: 1rem; font-weight: 650; margin: 32px 0 10px; }
+  a { color: var(--accent); }
+  kbd { font-family: var(--mono); font-size: .85em; border: 1px solid var(--rule); padding: 0 5px; background: var(--surface); }
+
+  .ui { font-family: var(--mono); font-size: .855em; padding: 1px 6px 2px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); }
+  .path { font-family: var(--mono); font-size: .86em; color: var(--ink-soft); background: var(--surface-sunk); padding: 1px 5px 2px; word-break: break-all; }
+  .trail { font-family: var(--mono); font-size: .855em; }
+  .trail .sep { color: var(--ink-faint); padding: 0 3px; }
+
+  ol.steps { list-style: none; margin: 22px 0 0; padding: 0; counter-reset: step; }
+  ol.steps > li { counter-increment: step; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 14px; padding-bottom: 20px; position: relative; }
+  ol.steps > li::before {
+    content: counter(step); font-family: var(--mono); font-size: 12px; color: var(--surface); background: var(--accent);
+    width: 22px; height: 22px; display: grid; place-items: center; margin-top: 2px;
+  }
+  ol.steps > li::after { content: ""; position: absolute; left: 11px; top: 26px; bottom: 4px; width: 1px; background: var(--rule); }
+  ol.steps > li:last-child::after { display: none; }
+  .step-lead { font-weight: 600; }
+  ul.plain { margin: 0 0 1.05em; padding-left: 1.1em; }
+  ul.plain li { margin-bottom: .4em; }
+  ul.plain li::marker { color: var(--ink-faint); }
+
+  .note { border: 1px solid var(--rule); border-left: 4px solid var(--accent); background: var(--surface); padding: 14px 18px; margin: 24px 0; }
+  .note .tag { font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); display: block; margin-bottom: 6px; }
+  .note p { font-size: .95rem; }
+  .note.care { border-left-color: var(--care); } .note.care .tag { color: var(--care); }
+  .note.stop { border-left-color: var(--danger); } .note.stop .tag { color: var(--danger); }
+  .note.good { border-left-color: var(--safe); } .note.good .tag { color: var(--safe); }
+
+  .table-wrap { overflow-x: auto; margin: 24px 0; border: 1px solid var(--rule); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: .92rem; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  thead th { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); font-weight: 600; background: var(--surface-sunk); border-bottom: 1px solid var(--rule); }
+  tbody tr:last-child td { border-bottom: none; }
+  td.name { font-family: var(--mono); font-size: .84rem; white-space: nowrap; }
+  tr.group td { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); background: var(--surface-sunk); padding-block: 6px; }
+  .flag { font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; padding: 2px 7px 3px; border: 1px solid currentColor; white-space: nowrap; }
+  .flag.read { color: var(--safe); } .flag.write { color: var(--danger); }
+  .yes { color: var(--safe); font-weight: 600; } .no { color: var(--ink-faint); } .new { color: var(--accent); font-weight: 600; }
+
+  .colophon { border-top: 2px solid var(--ink); margin-top: 72px; padding-top: 18px; font-family: var(--mono); font-size: 11.5px; letter-spacing: .05em; color: var(--ink-faint); display: flex; flex-wrap: wrap; gap: 8px 28px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="sheet">
+  <header class="masthead">
+    <div class="stamp">
+      <span class="lead">KH-Tool</span>
+      <span>Revit 2024 / 2025 / 2026</span>
+      <span>Version 2.1.0.1</span>
+      <span>Autodesk Forma · BIM 360</span>
+    </div>
+    <h1>Your first batch run</h1>
+    <p class="standfirst">
+      KH-Tool opens many Revit models for you, one after another, and writes down what it found.
+      You set it up once, press <strong>Run</strong> and walk away, or give it a time and let it run
+      overnight. Everything below assumes you have never opened it before.
+    </p>
+  </header>
+
+  <div class="frame">
+    <nav class="rail" aria-label="Contents">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#install">Install it</a></li>
+        <li><a href="#tab">Find the tab</a></li>
+        <li><a href="#set">Make a model set</a></li>
+        <li><a href="#first">Run something safe</a></li>
+        <li><a href="#same">What every tool shares</a></li>
+        <li><a href="#buttons">What each button does</a></li>
+        <li><a href="#schedule">Run it overnight</a></li>
+        <li><a href="#results">Where results land</a></li>
+        <li><a href="#move">Move it to a new PC</a></li>
+        <li><a href="#trouble">When it goes wrong</a></li>
+      </ol>
+    </nav>
+
+    <main>
+      <section id="install">
+        <div class="sec-head"><div class="sec-num">01</div><h2 class="sec-title">Install it</h2></div>
+        <div class="sec-body">
+          <p>
+            One installer, <span class="ui">KhBatchRunner-Setup.exe</span>, covers Revit 2024, 2025 and
+            2026. It installs for whichever of those years it finds on the PC.
+          </p>
+          <ol class="steps">
+            <li><div><p class="step-lead">Close Revit.</p>
+              <p>Revit reads its add-in folder only when it starts, and the installer writes into that folder.</p></div></li>
+            <li><div><p class="step-lead">Right-click the setup file and choose <span class="ui">Run as administrator</span>.</p>
+              <p>It installs for every account on the PC, which needs admin rights.</p></div></li>
+            <li><div><p class="step-lead">Windows says “Windows protected your PC”.</p>
+              <p>Click <span class="ui">More info</span>, then <span class="ui">Run anyway</span>. The file is not
+              signed with a commercial certificate.</p></div></li>
+            <li><div><p class="step-lead">Start Revit.</p>
+              <p>If Revit asks about an unsigned add-in, choose <span class="ui">Always Load</span>.</p></div></li>
+          </ol>
+          <div class="note">
+            <span class="tag">Coming from “ACC Batch Script Runner” 1.x</span>
+            <p>The 2.x installer replaces it in place. On first start your settings and model sets are
+            copied across and the old folder is kept as a backup. Each schedule is registered under
+            its new name the first time Revit starts normally.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab">
+        <div class="sec-head"><div class="sec-num">02</div><h2 class="sec-title">Find the tab, and sign in</h2></div>
+        <div class="sec-body">
+          <p>
+            A ribbon tab called <span class="ui">KH-Tool</span> appears beside Revit's own tabs. Its panels,
+            left to right: <strong>Setting</strong>, <strong>Batch Run</strong>, <strong>Schedule</strong>,
+            <strong>Multi Model Check</strong>, <strong>Model Batch Action</strong>, <strong>NWD Helper</strong>,
+            <strong>Forma Batch Action</strong>, <strong>Excel Link</strong> and <strong>Parameter Helper</strong>.
+            You will spend your first week in the first four.
+          </p>
+          <p>
+            On <strong>Setting</strong>: <span class="ui">About</span>, <span class="ui">Edit Sets</span> (a
+            dropdown with <span class="ui">Edit Model Set</span> and <span class="ui">Edit DYN Script Set</span>),
+            <span class="ui">Import / Export Settings</span>, and the two <span class="ui">AI Bridge</span> /
+            <span class="ui">AI Code</span> toggles, which are off at every Revit start.
+          </p>
+          <div class="note">
+            <span class="tag">Sign in first</span>
+            <p>The tool reads your Forma projects with the Autodesk account Revit itself is signed in
+            to. It never asks for a password. If model lists come up empty, sign in at the top right
+            of Revit and try again.</p>
+          </div>
+          <p>The separate <strong>DRW Helper</strong> edition has its own tab with the drawing tools; see
+          <a href="#buttons">section 6</a>.</p>
+        </div>
+      </section>
+
+      <section id="set">
+        <div class="sec-head"><div class="sec-num">03</div><h2 class="sec-title">Make a model set</h2></div>
+        <div class="sec-body">
+          <p>
+            A <strong>model set</strong> is a saved list of models, the thing you point a run at. Open
+            <span class="trail">Setting <span class="sep">›</span> Edit Sets <span class="sep">›</span> Edit Model Set</span>.
+          </p>
+          <ol class="steps">
+            <li><div><p class="step-lead">Click <span class="ui">New</span> and browse to your project folder in the Forma tree.</p></div></li>
+            <li><div><p class="step-lead">Tick the models you want and add them to the set.</p>
+              <p>Hold <kbd>Shift</kbd> to tick a range. You can also add <span class="ui">.rvt</span> files from disk.</p></div></li>
+            <li><div><p class="step-lead">Or add a whole folder.</p>
+              <p>Usually better: the set stores the folder, not today's file list, and scans it again
+              on every run. Models added next month are picked up without touching the set.</p></div></li>
+            <li><div><p class="step-lead">Name the set and click <span class="ui">Save set</span>.</p>
+              <p>Name it after what it is for, such as <em>Weekly SITE1 ARCH</em>.</p></div></li>
+          </ol>
+          <div class="note">
+            <span class="tag">Greyed-out models and sets</span>
+            <p>A <strong>model</strong> saved in a newer Revit than the one you have open is greyed with its
+            year beside it. Run it from the matching Revit.</p>
+            <p>A whole <strong>set</strong> greyed with <em>no access as &lt;you&gt;</em> means the signed-in
+            Autodesk account cannot open that project. You can still pick it: the check can be wrong, so
+            it warns and never blocks. Every dialog that lists model sets shows this the same way.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="first">
+        <div class="sec-head"><div class="sec-num">04</div><h2 class="sec-title">Run something safe</h2></div>
+        <div class="sec-body">
+          <p>Make your first run a read-only check on a small set. Click
+          <span class="trail">Multi Model Check <span class="sep">›</span> Get Phase &amp; Workset</span>.</p>
+          <ol class="steps">
+            <li><div><p class="step-lead">Tick one model set.</p><p>Three or four models is plenty.</p></div></li>
+            <li><div><p class="step-lead">Change <strong>When finished</strong> to <span class="ui">Close files</span>.</p>
+              <p>The default, <span class="ui">Close Revit when complete</span>, is right for real runs but
+              Revit disappears and you never see the summary.</p></div></li>
+            <li><div><p class="step-lead">Set a <strong>Destination folder</strong> and a <strong>Project log name</strong>.</p>
+              <p>The folder starts on the last one you used. The log name is a short project code stamped
+              into every file name.</p></div></li>
+            <li><div><p class="step-lead">Click <span class="ui">Run</span>, then leave Revit alone.</p>
+              <p>A progress window lists each model. Revit is driving itself; do not click around in it.</p></div></li>
+          </ol>
+          <div class="note good">
+            <span class="tag">Even quicker: the model you have open</span>
+            <p>With a project open, tick <span class="ui">Run on active model only</span>. Nothing opens or
+            closes, no log is written and the result appears in a grid on screen. A tool that changes the
+            model leaves the change unsaved so you can look first.</p>
+          </div>
+          <h3>Then try Batch Run</h3>
+          <p><span class="trail">Batch Run <span class="sep">›</span> Batch Run</span> has three lists: saved
+          model sets, one-off models, and the actions and Dynamo script sets to perform. Tick several
+          actions and they run top to bottom on each model; <span class="ui">Move ▲</span> /
+          <span class="ui">Move ▼</span> change the order. Leave <strong>Model treatment</strong> on
+          <span class="ui">Don't sync (dry run)</span> until you have read a dry-run log.</p>
+          <div class="note stop">
+            <span class="tag">Before you ever pick Sync</span>
+            <p>A batch that syncs is the one thing here that cannot be undone, and it does it to every
+            model in the set before you can look at the first one. Run it dry first, on copies.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="same">
+        <div class="sec-head"><div class="sec-num">05</div><h2 class="sec-title">What every tool shares</h2></div>
+        <div class="sec-body wide">
+          <p style="max-width:68ch">Learn one dialog and you know the rest. Every tool that runs over models
+          follows the same five habits.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Habit</th><th>How it works everywhere</th></tr></thead>
+              <tbody>
+                <tr><td class="name">Pick a model set</td><td>The same list of saved sets, with the same greying for sets your account cannot open. Where the list has tick boxes (the check and action buttons, Batch Run, Export NWC, Export IFC + Data) tick as many sets as you like: they run as one list, and a model that is in two sets runs once. The other tools take one set.</td></tr>
+                <tr><td class="name">Save your inputs</td><td>Type a name in the set box and click <span class="ui">Save set</span>. Saving over an existing name asks first. Saving a loaded set under a new name <strong>renames</strong> it; use <span class="ui">Duplicate</span> to make a copy. <span class="ui">Delete</span> asks first. The dialog reopens with what you last ran.</td></tr>
+                <tr><td class="name">Run on the open model</td><td><span class="ui">Run on active model only</span>: no log, nothing saved or synced, result on screen. The checkbox sits under the model-set list and only appears when a project model is open before you click the button.</td></tr>
+                <tr><td class="name">Run on a set</td><td><span class="ui">When finished</span> (close Revit, close files, or leave open), a destination folder that starts on the last one used, and a project log name.</td></tr>
+                <tr><td class="name">Run in parallel</td><td>A big set is split into groups, each in its own Revit, as many at once as the PC's memory allows. A supervisor reruns any model a crashed Revit took with it. Revit is never force-closed.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h3>Which tool does which</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Tool</th><th>Saved inputs</th><th>Open model</th><th>Batch / Schedule Run</th><th>Parallel</th></tr></thead>
+              <tbody>
+                <tr><td class="name">The six checks, Purge Import CAD, Isolate Warnings</td><td class="no">none needed</td><td class="yes">yes</td><td class="yes">both</td><td class="yes">yes</td></tr>
+                <tr><td class="name">Correct Workset</td><td class="yes">yes</td><td class="yes">yes</td><td>Schedule</td><td class="yes">yes</td></tr>
+                <tr><td class="name">Batch Link RVT</td><td class="yes">yes</td><td class="new">yes (new)</td><td class="no">own button only</td><td class="no">no</td></tr>
+                <tr><td class="name">Export NWC, Export IFC + Data</td><td class="yes">yes</td><td class="new">yes (new)</td><td class="yes">both</td><td class="yes">yes</td></tr>
+                <tr><td class="name">Batch Interop</td><td class="yes">checkset</td><td class="no">no</td><td>Schedule Interop</td><td class="yes">always its own Revit</td></tr>
+                <tr><td class="name">Cut Model, Initiate to Forma</td><td class="yes">yes</td><td class="no">no, they publish a copy</td><td class="yes">both</td><td class="yes">yes</td></tr>
+                <tr><td class="name">Internal Relink</td><td class="yes">yes</td><td class="no">no</td><td>Schedule</td><td class="yes">yes, with a guard</td></tr>
+                <tr><td class="name">Get File Log, Get Data Extract</td><td class="yes">yes</td><td class="no">opens no model</td><td>Schedule</td><td class="no">not needed</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="note care" style="max-width:68ch">
+            <span class="tag">“New” means build 2.1.0.1</span>
+            <p>Build 2.1.0.1 is a review build, not yet released. It adds running Export NWC, Export IFC +
+            Data and Batch Link RVT on the open model, ticking several model sets in the two export
+            dialogs, and the shared save / rename / delete rules in the export and Interop dialogs.
+            Help → About shows which build you have. An export of the open model writes what is open at that moment, so open the worksets you
+            need first. How big runs are split across Revits is being reviewed and has not changed.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="buttons">
+        <div class="sec-head"><div class="sec-num">06</div><h2 class="sec-title">What each button does</h2></div>
+        <div class="sec-body wide">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Button</th><th></th><th>What you get</th></tr></thead>
+              <tbody>
+                <tr class="group"><td colspan="3">Multi Model Check</td></tr>
+                <tr><td class="name">Get Site Location &amp; PBP</td><td><span class="flag read">Reads</span></td><td>Site location, true north, project base point and survey point.</td></tr>
+                <tr><td class="name">Get Phase &amp; Workset</td><td><span class="flag read">Reads</span></td><td>Every phase and workset per model, plus a matrix workbook. The safest first run.</td></tr>
+                <tr><td class="name">Get Design Option</td><td><span class="flag read">Reads</span></td><td>Option sets, their options, and which is primary.</td></tr>
+                <tr><td class="name">Get Link Workset</td><td><span class="flag read">Reads</span></td><td>Every Revit link, linked or imported CAD, image and point cloud, and the workset it sits on.</td></tr>
+                <tr><td class="name">Drawing Progress</td><td><span class="flag read">Reads</span></td><td>Every sheet: number, name, current revision, date, placeholder status. Slow on big models.</td></tr>
+                <tr><td class="name">Type Mark Text Note</td><td><span class="flag read">Reads</span></td><td>Every text note compared against the model's Type Marks.</td></tr>
+                <tr><td class="name">Rebuild Report</td><td><span class="flag read">Reads</span></td><td>Rebuilds a matrix workbook, or the Batch Interop summary, from files a run already wrote. Opens no model.</td></tr>
+                <tr class="group"><td colspan="3">Model Batch Action</td></tr>
+                <tr><td class="name">Purge Import CAD</td><td><span class="flag write">Writes</span></td><td>Deletes every imported (not linked) CAD instance.</td></tr>
+                <tr><td class="name">Isolate Warnings</td><td><span class="flag write">Writes</span></td><td>One 3D view per warning, isolating its elements. Listed in Batch Run as <em>Isolate Warning Elements</em>.</td></tr>
+                <tr><td class="name">Batch Link RVT</td><td><span class="flag write">Writes</span></td><td>Links source models into every model of a set, on one workset or one per link. A source already linked is skipped.</td></tr>
+                <tr><td class="name">Correct Workset</td><td><span class="flag write">Writes</span></td><td>Moves chosen categories and links onto their proper worksets. Check mode only reports; Fix mode applies and syncs.</td></tr>
+                <tr class="group"><td colspan="3">Batch Run panel and NWD Helper</td></tr>
+                <tr><td class="name">Batch Interop</td><td><span class="flag read">Reads</span></td><td>Runs an Autodesk Model Checker checkset over a set. Needs BIM Interoperability Tools installed.</td></tr>
+                <tr><td class="name">Export NWC</td><td><span class="flag read">Reads</span></td><td>Navisworks files, from the whole model or from 3D views by name. Needs the exporter that installs with Navisworks.</td></tr>
+                <tr><td class="name">Export IFC + Data</td><td><span class="flag read">Reads</span></td><td>One IFC per model plus <span class="path">elements.csv</span> and <span class="path">rooms.csv</span> in a dated run folder, then converted for a web viewer.</td></tr>
+                <tr><td class="name">Create rfa from NWD</td><td><span class="flag write">Writes</span></td><td>Builds a Revit family from a KH-NWD Tool export. Not a batch tool.</td></tr>
+                <tr class="group"><td colspan="3">Forma Batch Action</td></tr>
+                <tr><td class="name">Get File Log</td><td><span class="flag read">Reads</span></td><td>Version history for a set of Forma folders, one CSV per folder. Opens no model.</td></tr>
+                <tr><td class="name">Get Data Extract</td><td><span class="flag read">Reads</span></td><td>Downloads the newest Forma Data Connector extract as CSVs.</td></tr>
+                <tr><td class="name">Check Sheet Publish</td><td><span class="flag read">Reads</span></td><td>Given a CSV of sheet numbers, reports which each model has published.</td></tr>
+                <tr><td class="name">Initiate to Forma</td><td><span class="flag write">Writes</span></td><td>Publishes each model as a new cloud model in a chosen folder. Sources are not changed.</td></tr>
+                <tr><td class="name">Cut Model</td><td><span class="flag write">Writes</span></td><td>Publishes a copy of each model set to one site location, named with the site code.</td></tr>
+                <tr><td class="name">Internal Relink</td><td><span class="flag write">Writes</span></td><td>Re-points each host's links from old-prefix models to the matching new-prefix ones, then syncs.</td></tr>
+                <tr class="group"><td colspan="3">The open model only</td></tr>
+                <tr><td class="name">Excel Link</td><td><span class="flag write">Writes</span></td><td>Exports schedules to Excel and reads your edits back as one undo step.</td></tr>
+                <tr><td class="name">Formula Rules, Apply Now</td><td><span class="flag write">Writes</span></td><td>Writes a formula's result into a parameter, so it can be tagged and filtered.</td></tr>
+                <tr><td class="name">Mirror Check</td><td><span class="flag write">Writes</span></td><td>Labels mirrored and flipped family instances in a text parameter.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="max-width:68ch"><strong>DRW Helper</strong> is a separate edition with its own tab: Enlarge Room, Enlarge
+          Stair, Enlarge Door &amp; Window, Datum Dimension, Match Datums, Single Font, Stair Annotation,
+          Preset Tagger, Wall Mat Tag and Sync View. Each works on the open model from a saved preset,
+          and its Batch Run lists those presets.</p>
+        </div>
+      </section>
+
+      <section id="schedule">
+        <div class="sec-head"><div class="sec-num">07</div><h2 class="sec-title">Run it overnight</h2></div>
+        <div class="sec-body">
+          <p>Open <span class="trail">Schedule <span class="sep">›</span> Schedule Run</span>. The bottom half is
+          the Batch Run form. The top half adds a name, a recurrence (once, daily, weekly), a date and a
+          time. Click <span class="ui">Save schedule</span> and Windows Task Scheduler starts Revit at
+          that time. Press <span class="ui">Run now</span> first to try the exact selection.</p>
+          <ul class="plain">
+            <li><strong>Leave When finished on Close Revit when complete.</strong> A scheduled run has to end by itself.</li>
+            <li><strong>Stay logged on.</strong> Locking the screen is fine. Signing out or shutting down means nothing runs.</li>
+            <li><strong>Space schedules apart.</strong> Each run works out how many Revits the PC can carry for itself alone, so two that overlap overload it.</li>
+            <li><strong>Untick On to pause one.</strong> The Windows task is kept and <span class="ui">Run now</span> still works.</li>
+          </ul>
+          <div class="note good">
+            <span class="tag">You get a notification</span>
+            <p>A Windows notification shows the succeeded and failed counts when a run ends.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="results">
+        <div class="sec-head"><div class="sec-num">08</div><h2 class="sec-title">Where results land</h2></div>
+        <div class="sec-body">
+          <h3>The run log: did it work?</h3>
+          <p><span class="path">…\Log\20261113_2100_SITE1_Get Phase &amp; Workset.csv</span></p>
+          <p>One file per run in a <span class="path">Log</span> sub-folder, one row per model per task with a
+          status and a message. Open this first. Parallel Revits all write to this one file.</p>
+          <h3>The detail files: what it found</h3>
+          <p>Each task has its own sub-folder and one file per day; a second run the same day appends to
+          it. Exports write their files to the output folder named in their options set.</p>
+          <div class="note">
+            <span class="tag">Reading a failure</span>
+            <p>A failed model carries the reason in its Message column. Fix the cause and re-run just
+            those models as one-off models in Batch Run.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="move">
+        <div class="sec-head"><div class="sec-num">09</div><h2 class="sec-title">Move it to a new PC</h2></div>
+        <div class="sec-body">
+          <p><span class="trail">Setting <span class="sep">›</span> Import / Export Settings</span> writes one
+          <span class="ui">.zip</span> with your model sets, script sets, folder sets and every tool's
+          saved inputs. Import it on the new PC; if something already exists you choose once to skip,
+          overwrite or keep both.</p>
+          <div class="note care">
+            <span class="tag">Schedules do not travel</span>
+            <p>Half of a schedule lives in Windows Task Scheduler. Re-create schedules on the new PC.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="trouble">
+        <div class="sec-head"><div class="sec-num">10</div><h2 class="sec-title">When it goes wrong</h2></div>
+        <div class="sec-body">
+          <h3>Half my sets are greyed out</h3>
+          <p>Revit is signed in as an account that cannot open those projects. Check the account at the
+          top right of Revit.</p>
+          <h3>A Revit window closed on its own</h3>
+          <p>Expected. Each group closes its own Revit when it finishes. If a model crashes Revit while
+          opening, the run restarts that group with the models it had not finished.</p>
+          <h3>A run says a group needs attention</h3>
+          <p>That Revit was left open for you to look at. The tool never force-closes Revit. Look at the
+          window before you close it.</p>
+          <h3>Nothing happened at the scheduled time</h3>
+          <ul class="plain">
+            <li>Were you still logged on?</li>
+            <li>Is the schedule's <span class="ui">On</span> box ticked?</li>
+            <li>Was a Revit already open with a dialog waiting, such as the unsigned add-in prompt?</li>
+          </ul>
+          <h3>An export of the open model looks incomplete</h3>
+          <p>It exports what is open. Open the missing worksets and run it again, or run it over a model
+          set, where the tool opens the worksets the export view needs.</p>
+          <h3>Reporting a problem</h3>
+          <p>Use the Start menu shortcut <span class="ui">Collect diagnostics report</span> after the run
+          that went wrong. It gathers the run logs and Revit journals into one ZIP on your Desktop,
+          changes nothing and needs no admin rights. Attach it to an issue at
+          <a href="https://github.com/lakeru135/KH-Tool/issues">github.com/lakeru135/KH-Tool/issues</a>,
+          after checking it holds nothing confidential.</p>
+        </div>
+      </section>
+
+      <div class="colophon">
+        <span>KH-Tool handbook</span>
+        <span>Version 2.1.0.1 · 13 Nov 2026</span>
+        <span>Source: github.com/lakeru135/KH-Tool</span>
+      </div>
+    </main>
+  </div>
+</div>

@@ -4,7 +4,8 @@ Batch run, schedule and check Revit models stored in **Autodesk Forma** (formerl
 
 **Works with:** Revit 2024 · 2025 · 2026 · Autodesk Forma · BIM 360
 
-**New here?** Read the [KH-Tool handbook](https://claude.ai/artifact/CXSCchFSkXbCvrGTcaUpfw): install,
+**New here?** Read the [KH-Tool handbook](https://claude.ai/artifact/CXSCchFSkXbCvrGTcaUpfw)
+(its source is kept in [`docs/handbook.html`](docs/handbook.html)): install,
 first run, what each button does and what to do when a run goes wrong.
 
 KH-Tool is a C# Revit add-in from Kanghun BIM. It browses your Forma hubs and saves reusable **model
