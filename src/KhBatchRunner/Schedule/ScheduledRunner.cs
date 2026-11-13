@@ -301,6 +301,13 @@ public static partial class ScheduledRunner
                             _hlJob.GroupSize, splitModels.Models, InstanceBudget.WeightFor(_hlJob)),
                         alwaysSupervise: RunsInterop(_hlJob));
 
+                    // A split was asked for and the only thing that stopped it is free RAM: say so,
+                    // because that is the one cause the person at the machine can remove.
+                    if (splitSize == 0 && splitModels.Models.Count > 1 &&
+                        InstanceBudget.MeasuredShortfallNote(
+                            splitModels.Models, InstanceBudget.WeightFor(_hlJob)) is string shortfall)
+                        WriteNote(sd, sp, _hlJob.Name, "Running in one Revit: " + shortfall + ".", "INFO");
+
                     // Count first: CanSplit writes a note, and a run too small to split shouldn't
                     // produce one.
                     if (splitSize > 0 &&

@@ -1781,6 +1781,82 @@ internal static class Program
     /// <para>The rule lives in <see cref="InstanceBudget.WeightFor"/> so the parent that splits a run
     /// and the supervisor that relaunches its groups cannot disagree about it.</para>
     /// </summary>
+    /// <summary>
+    /// The measured budget: a whole-view export of models that have ALL been measured light may run
+    /// two Revits on a 32 GB PC, and nothing else changes.
+    ///
+    /// <para>MEASURED 2026-11-13: six cloud models, Export NWC, one Revit peaking at 3.4–4.3 GB while
+    /// the flat 24 GB budget held the PC to one instance. The cases pin both halves: the relaxation
+    /// happens on that evidence, and it does not happen without it.</para>
+    /// </summary>
+    private static void MeasuredBudgetCases()
+    {
+        long?[] light = { 3399, 3399, 3399, 3399, 3399, 4295 };
+
+        Expect("six measured-light models on 32 GB with 16 GB free get 2 instances",
+            InstanceBudget.MeasuredCapFor(light, 32, 16, 16), 2);
+        Expect("…budgeted at the heaviest one plus half again",
+            Math.Round(InstanceBudget.MeasuredPerInstanceGb(4295), 2), Math.Round(4295 / 1024d * 1.5, 2));
+        Expect("…but with 12 GB free only 1: installed RAM is not free RAM",
+            InstanceBudget.MeasuredCapFor(light, 32, 12, 16), 1);
+        Expect("one unmeasured model means no opinion, so the flat cap stands",
+            InstanceBudget.MeasuredCapFor(new long?[] { 3399, null, 3399 }, 32, 16, 16), 0);
+        Expect("a zero record is no record",
+            InstanceBudget.MeasuredCapFor(new long?[] { 3399, 0 }, 32, 16, 16), 0);
+        Expect("one model that measured 20 GB keeps a 32 GB PC from a second instance",
+            InstanceBudget.MeasuredCapFor(new long?[] { 3399, 20480 }, 32, 28, 16) < 2, true);
+        Expect("free RAM unreadable means no opinion",
+            InstanceBudget.MeasuredCapFor(light, 32, 0, 16), 0);
+        Expect("an empty list means no opinion",
+            InstanceBudget.MeasuredCapFor(Array.Empty<long?>(), 32, 16, 16), 0);
+        Expect("the all-worksets ceiling of 2 still holds on a big machine",
+            InstanceBudget.MeasuredCapFor(light, 128, 100, 32), 2);
+        Expect("a tiny model is still budgeted at an ordinary Revit's 6 GB",
+            InstanceBudget.MeasuredPerInstanceGb(500), 6d);
+        Expect("…so two of them need 14 GB free, and 13.9 is not enough",
+            InstanceBudget.MeasuredCapFor(new long?[] { 500, 500 }, 32, 13.9, 16), 1);
+        Expect("…and 14 is",
+            InstanceBudget.MeasuredCapFor(new long?[] { 500, 500 }, 32, 14, 16), 2);
+        Expect("the CPU term still binds on a 4-thread machine",
+            InstanceBudget.MeasuredCapFor(light, 32, 16, 4), 1);
+        // The flat rule is untouched: the measured rule sits beside it and can only raise.
+        Expect("the flat 32 GB answer is still 1",
+            InstanceBudget.CapFor(RunWeight.AllWorksets, 32, 32), 1);
+
+        // The store: keeps the last three peaks per model and answers with the highest, so one
+        // light run does not erase a heavy one.
+        string store = Path.Combine(Path.GetTempPath(), "kh-model-memory-" + Guid.NewGuid().ToString("N") + ".json");
+        ModelMemory.StorePathOverride = store;
+        try
+        {
+            var a = new CloudModel { DisplayName = "A.rvt", LocalPath = @"C:\sim\mem\A.rvt" };
+            var b = new CloudModel { DisplayName = "B.rvt", LocalPath = @"C:\sim\mem\B.rvt" };
+            Expect("no store: every model is unknown",
+                ModelMemory.KnownPeaksMb(new[] { a, b }).All(p => p == null), true);
+            ModelMemory.Record(ModelKey.For(a), 9000);
+            ModelMemory.Record(ModelKey.For(a), 4000);
+            Expect("the highest kept peak answers, not the latest",
+                ModelMemory.KnownPeaksMb(new[] { a, b })[0], (long?)9000);
+            Expect("…and a model never recorded stays unknown",
+                ModelMemory.KnownPeaksMb(new[] { a, b })[1], (long?)null);
+            ModelMemory.Record(ModelKey.For(a), 4100);
+            ModelMemory.Record(ModelKey.For(a), 4200);
+            Expect("a peak older than the last three runs is forgotten",
+                ModelMemory.KnownPeaksMb(new[] { a })[0], (long?)4200);
+            ModelMemory.Record(ModelKey.For(b), 0);
+            Expect("a zero peak is not recorded",
+                ModelMemory.KnownPeaksMb(new[] { b })[0], (long?)null);
+            File.WriteAllText(store, "{ not json");
+            Expect("an unreadable store reads as no record",
+                ModelMemory.KnownPeaksMb(new[] { a })[0], (long?)null);
+        }
+        finally
+        {
+            ModelMemory.StorePathOverride = null;
+            try { File.Delete(store); } catch { /* temp file */ }
+        }
+    }
+
     private static void AllWorksetsWeightCases()
     {
         var nwc = new ScheduledJob
@@ -1852,6 +1928,7 @@ internal static class Program
         }
         finally { Environment.SetEnvironmentVariable(InstanceBudget.EnvVar, null); }
 
+        MeasuredBudgetCases();
         WorksetPlanCases();
         ReopenLadderCases();
         NonWorksharedCloudCases();

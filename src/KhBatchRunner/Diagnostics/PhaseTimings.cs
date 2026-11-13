@@ -28,6 +28,13 @@ namespace KhBatchRunner.Diagnostics;
 /// Count, PeakWorkingSetMB, FreeRamMB, Note</c>. Phases nested inside the action are named
 /// <c>run/…</c>; they are part of <c>run</c>, not additional to it. Run-level events (start-up,
 /// waits) have a blank Model. Never throws: a measurement must not be able to fail a run.</para>
+///
+/// <para><b>The one thing a later run reads.</b> While a model is in hand the process's working set
+/// is sampled once a second, and the highest sample is the model's own peak (the
+/// <c>PeakWorkingSetMB</c> column is the process's lifetime peak, which every later model of the same
+/// Revit inherits). For a whole-view export that peak goes to <see cref="Schedule.ModelMemory"/>,
+/// which is what lets <see cref="Schedule.InstanceBudget"/> budget a set of known-light models by
+/// what they measured.</para>
 /// </summary>
 internal static class PhaseTimings
 {
@@ -51,6 +58,9 @@ internal static class PhaseTimings
     private static string? _model;
     private static string _action = "";
     private static Stopwatch? _total;
+    private static string _modelKey = "";
+    private static long _modelPeakBytes;
+    private static System.Threading.Timer? _sampler;
     private static readonly List<Entry> Entries = new();
 
     public static string CsvPath => Path.Combine(
@@ -70,10 +80,36 @@ internal static class PhaseTimings
                 _action = action;
                 _total = Stopwatch.StartNew();
                 Entries.Clear();
+                _modelKey = Batch.ModelContext.CurrentKey ?? "";
+                _modelPeakBytes = WorkingSetBytes();
+                // One timer for the life of the process; it does nothing while no model is in hand.
+                _sampler ??= new System.Threading.Timer(_ => Sample(), null, 1000, 1000);
             }
         }
         catch { /* measuring must never throw */ }
     }
+
+    private static void Sample()
+    {
+        try
+        {
+            if (_model == null) return;          // unlocked peek: a missed tick costs nothing
+            long now = WorkingSetBytes();
+            lock (Gate) { if (_model != null && now > _modelPeakBytes) _modelPeakBytes = now; }
+        }
+        catch { /* measuring must never throw */ }
+    }
+
+    private static long WorkingSetBytes()
+    {
+        try { using Process p = Process.GetCurrentProcess(); return p.WorkingSet64; }
+        catch { return 0; }
+    }
+
+    /// <summary>Whether <paramref name="action"/> is one whose memory the budget is sized by — the
+    /// same two <see cref="Schedule.InstanceBudget.WeightFor"/> calls a whole-view export.</summary>
+    private static bool IsWholeViewExport(string action) =>
+        action == Actions.ActionNames.ExportNwc || action == Actions.ActionNames.ExportIfcData;
 
     /// <summary>Names the action later phases belong to: a pass that joins a document an earlier
     /// pass opened is a different action on the same model.</summary>
@@ -162,6 +198,12 @@ internal static class PhaseTimings
         string model = _model;
         long total = _total?.ElapsedMilliseconds ?? 0;
         (string peak, string free) = Memory();
+        long modelPeakMb = Math.Max(_modelPeakBytes, WorkingSetBytes()) / (1024 * 1024);
+        string modelKey = _modelKey;
+        // Only a model whose export actually ran says anything about what the export costs.
+        bool exported = Entries.Exists(e => e.Phase == "run" && IsWholeViewExport(e.Action));
+        if (modelPeakMb > 0)
+            note = (note.Length > 0 ? note + "; " : "") + $"model peak {modelPeakMb} MB";
 
         var sb = new StringBuilder();
         var line = new StringBuilder();
@@ -176,12 +218,16 @@ internal static class PhaseTimings
 
         _model = null;
         _total = null;
+        _modelKey = "";
+        _modelPeakBytes = 0;
         Entries.Clear();
+        if (exported) Schedule.ModelMemory.Record(modelKey, modelPeakMb);
 
         WriteRows(sb.ToString());
         // Shaped like every other model line ("action | model | stage") so the supervisor reads it
         // as work on this model, and deliberately not an open or a run stage.
         RunTrace.Mark($"{_action} | {model} | timings ms: {line}; total {total}" +
+                      (modelPeakMb > 0 ? $"; model peak {modelPeakMb} MB" : "") +
                       (peak.Length > 0 ? $"; peak working set {peak} MB" : "") +
                       (free.Length > 0 ? $"; free RAM {free} MB" : ""));
     }

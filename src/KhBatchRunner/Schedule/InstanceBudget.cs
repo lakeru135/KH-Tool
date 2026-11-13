@@ -273,8 +273,108 @@ internal static class InstanceBudget
     public static int MaxConcurrent(IReadOnlyList<CloudModel> models) => MaxConcurrent();
 
     /// <summary>Cap for one concrete model list at the given weight.</summary>
-    public static int MaxConcurrent(IReadOnlyList<CloudModel> models, RunWeight weight) =>
-        MaxConcurrent(weight);
+    /// <remarks>
+    /// For a whole-view export (<see cref="RunWeight.AllWorksets"/>) this is where the measured rule
+    /// comes in: when EVERY model in the list has a memory record (<see cref="ModelMemory"/>) and the
+    /// machine has the room right now, the cap may be higher than the flat figure. It is never lower
+    /// — see <see cref="MeasuredCapFor"/>. The <see cref="EnvVar"/> override still wins.
+    /// </remarks>
+    public static int MaxConcurrent(IReadOnlyList<CloudModel> models, RunWeight weight)
+    {
+        int flat = MaxConcurrent(weight);
+        if (Forced().HasValue || weight != RunWeight.AllWorksets) return flat;
+        return Math.Max(flat, Measured(models).Cap);
+    }
+
+    /// <summary>Safety factor on a measured peak. A sampled figure can miss a short spike, and a
+    /// model grows between runs; half again covers both without pretending to precision.</summary>
+    private const double MeasuredSafetyFactor = 1.5;
+
+    /// <summary>Least a measured instance is budgeted, however small its models measured — the same
+    /// figure an ordinary instance gets (<see cref="PerInstanceGb"/>). A measured budget below an
+    /// ordinary Revit's would be believing the record over the floor every other run stands on.</summary>
+    private const double MeasuredFloorGb = PerInstanceGb;
+
+    /// <summary>Free RAM that must remain after the measured instances are counted. The installed-RAM
+    /// term assumes <see cref="ReserveGb"/> covers everything else on the machine; this term checks
+    /// that against what is actually free, because a desktop with a browser and an editor open is
+    /// already using far more than the reserve.</summary>
+    private const double FreeMarginGb = 2;
+
+    /// <summary>What one instance is budgeted when its heaviest model measured
+    /// <paramref name="worstPeakMb"/>.</summary>
+    internal static double MeasuredPerInstanceGb(long worstPeakMb) =>
+        Math.Max(MeasuredFloorGb, worstPeakMb / 1024d * MeasuredSafetyFactor);
+
+    /// <summary>
+    /// The cap a whole-view export may have on MEASURED load, for a stated machine — no environment,
+    /// no P/Invoke, no store. 0 means "no opinion": the caller keeps the flat cap.
+    ///
+    /// <para><b>MEASURED 2026-11-13.</b> Six cloud models exported to NWC in one Revit peaking at
+    /// 3.4–4.3 GB, on a 32 GB PC the flat 24 GB budget holds to one Revit. The 24 GB is not wrong —
+    /// other models measured 18–49 GB — it is wrong for a set known to be light.</para>
+    ///
+    /// <para>The rule can only RAISE a cap, and only on evidence for every model:</para>
+    /// <list type="bullet">
+    /// <item>one model with no record → 0. An unmeasured model is budgeted as the worst case.</item>
+    /// <item>each instance is budgeted at its heaviest model × <see cref="MeasuredSafetyFactor"/>,
+    /// never under <see cref="MeasuredFloorGb"/>. The heaviest model of the whole list, not of each
+    /// group: groups are dealt after the cap is known, and any instance may get that model.</item>
+    /// <item>the instances must fit in installed RAM less the reserve AND in the RAM free now less
+    /// <see cref="FreeMarginGb"/>. Free RAM unreadable → 0.</item>
+    /// <item><see cref="AllWorksetsHardCeiling"/> still applies. Nothing here lets a 128 GB machine
+    /// start more than it could before.</item>
+    /// </list>
+    /// </summary>
+    internal static int MeasuredCapFor(
+        IReadOnlyList<long?> peaksMb, double totalGb, double freeGb, int processorCount)
+    {
+        if (peaksMb.Count == 0 || totalGb <= 0 || freeGb <= 0) return 0;
+
+        long worst = 0;
+        foreach (long? peak in peaksMb)
+        {
+            if (!peak.HasValue || peak.Value <= 0) return 0;
+            worst = Math.Max(worst, peak.Value);
+        }
+
+        double perInstance = MeasuredPerInstanceGb(worst);
+        int byRam = (int)Math.Floor((totalGb - ReserveGb) / perInstance);
+        int byFree = (int)Math.Floor((freeGb - FreeMarginGb) / perInstance);
+        int byCpu = Math.Max(1, processorCount / ThreadsPerInstance);
+        return Math.Max(0, Math.Min(AllWorksetsHardCeiling, Math.Min(Math.Min(byRam, byFree), byCpu)));
+    }
+
+    /// <summary>The measured rule applied to this machine and this model list, with the figures it
+    /// was decided on so <see cref="Describe(IReadOnlyList{CloudModel}, RunWeight)"/> can say why.</summary>
+    private readonly struct MeasuredBudget
+    {
+        public MeasuredBudget(int cap, bool allKnown, double perInstanceGb, double freeGb)
+        {
+            Cap = cap; AllKnown = allKnown; PerInstanceGb = perInstanceGb; FreeGb = freeGb;
+        }
+        public int Cap { get; }
+        public bool AllKnown { get; }
+        public double PerInstanceGb { get; }
+        public double FreeGb { get; }
+    }
+
+    private static MeasuredBudget Measured(IReadOnlyList<CloudModel> models)
+    {
+        try
+        {
+            if (models.Count == 0) return default;
+            List<long?> peaks = ModelMemory.KnownPeaksMb(models);
+            if (peaks.Any(p => !p.HasValue || p.Value <= 0)) return default;
+
+            long freeMb = FreeMemoryMb();
+            double freeGb = freeMb > 0 ? freeMb / 1024d : 0;
+            double perInstance = MeasuredPerInstanceGb(peaks.Max(p => p!.Value));
+            int cap = MeasuredCapFor(peaks, TotalMemoryGb(), freeGb, Environment.ProcessorCount);
+            return new MeasuredBudget(cap, true, perInstance, freeGb);
+        }
+        catch { return default; }   // no opinion: the flat cap stands
+    }
 
     /// <summary>
     /// Models per Revit instance, derived rather than typed.
@@ -433,9 +533,47 @@ internal static class InstanceBudget
     public static string Describe(IReadOnlyList<CloudModel> models, RunWeight weight)
     {
         string text = Describe(weight);
+        if (!Forced().HasValue && weight == RunWeight.AllWorksets)
+        {
+            int flat = MaxConcurrent(weight);
+            MeasuredBudget measured = Measured(models);
+            if (measured.Cap > flat)
+            {
+                text = $"at most {measured.Cap} Revit instance(s) at once (every model here has been " +
+                       $"measured: {measured.PerInstanceGb:0.#} GB budgeted each, " +
+                       $"{measured.FreeGb:0.#} GB RAM free now)";
+            }
+            else if (ShortfallNote(measured, flat) is string shortfall)
+                text += "; " + shortfall;
+        }
         if (models.Any(m => !m.IsLocal))
             text += $", each starting its first cloud open {FirstOpenStaggerSeconds}s after the last";
         return text;
+    }
+
+    /// <summary>
+    /// Why a whole-view export of measured-light models is still held to the flat cap, as a phrase
+    /// for the run log — or null when that is not what happened (a model is unmeasured, the models
+    /// are heavy, the cap is forced, or the run already gets the ceiling).
+    ///
+    /// <para>Exists so a serial run on a busy desktop is explained rather than just slow: the only
+    /// thing in the way is free RAM, and that is something the person at the machine can change.</para>
+    /// </summary>
+    public static string? MeasuredShortfallNote(IReadOnlyList<CloudModel> models, RunWeight weight)
+    {
+        if (Forced().HasValue || weight != RunWeight.AllWorksets) return null;
+        return ShortfallNote(Measured(models), MaxConcurrent(weight));
+    }
+
+    private static string? ShortfallNote(MeasuredBudget measured, int flat)
+    {
+        if (!measured.AllKnown || measured.Cap > flat || flat >= AllWorksetsHardCeiling) return null;
+        double needed = AllWorksetsHardCeiling * measured.PerInstanceGb + FreeMarginGb;
+        if (measured.FreeGb <= 0 || measured.FreeGb >= needed) return null;
+        if ((TotalMemoryGb() - ReserveGb) / measured.PerInstanceGb < AllWorksetsHardCeiling) return null;
+        return $"these models measured light enough for {AllWorksetsHardCeiling} Revit instances " +
+               $"({measured.PerInstanceGb:0.#} GB budgeted each), but that needs {needed:0.#} GB RAM " +
+               $"free and {measured.FreeGb:0.#} GB is";
     }
 
     private static int? Forced()
