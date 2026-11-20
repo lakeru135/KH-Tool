@@ -64,6 +64,7 @@ async function convertOne(inIfc, outFrag) {
  * measured on a sample model, recomputed GUIDs matched 76 % of rows while Tag covered every exported
  * building element (railing and curtain sub-parts carry their parent's id, which is what a click wants).
  */
+// idmap.csv also lists rooms (IfcSpace, IfcClass = IFCSPACE) since 2.1.0.6.
 async function writeIdMap(inIfc, outCsv) {
   const api = new WEBIFC.IfcAPI();
   api.SetWasmPath(scriptDir() + path.sep, true);
@@ -78,8 +79,10 @@ async function writeIdMap(inIfc, outCsv) {
   }
   const rows = ["GlobalId,ElementId,IfcClass"];
   for (const type of api.GetIfcEntityList(modelId)) {
-    if (!api.IsIfcElement(type)) continue;
     const name = api.GetNameFromTypeCode(type);
+    // Rooms are IfcSpace, a spatial element rather than an IfcElement; the report maps them too so
+    // a room picked in the Areas table can be found in 3D.
+    if (!api.IsIfcElement(type) && name !== "IFCSPACE") continue;
     const ids = api.GetLineIDsWithType(modelId, type);
     for (let i = 0; i < ids.size(); i++) {
       const line = api.GetLine(modelId, ids.get(i));

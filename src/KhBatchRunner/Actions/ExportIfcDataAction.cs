@@ -233,6 +233,9 @@ public sealed class ExportIfcDataAction : BatchActionBase
         {
             options.FilterViewId = view.Id;
             options.AddOption("VisibleElementsOfCurrentView", "true");
+            // Rooms are not drawn in a 3D view, so a view export leaves them out unless asked. With
+            // rooms.csv on, they go into the IFC as IfcSpace so the report can show a room in 3D.
+            if (_spec.WriteRoomsCsv) options.AddOption("ExportRoomsInView", "true");
         }
         options.AddOption("ExportIFCCommonPropertySets", _spec.ExportCommonPropertySets ? "true" : "false");
         options.AddOption("ExportInternalRevitPropertySets", _spec.ExportRevitPropertySets ? "true" : "false");

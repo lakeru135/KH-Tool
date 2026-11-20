@@ -29,7 +29,7 @@
 
 .NOTES
   Keep Product.Version (src\KhBatchRunner\Product.cs) and AppVersion (KhBatchRunner.iss) in
-  step - currently 2.1.0.5 - and set Product.BuiltInExpiryUtc to 90 days from the build date.
+  step - currently 2.1.0.6 - and set Product.BuiltInExpiryUtc to 90 days from the build date.
   Requires Inno Setup 6 (ISCC.exe); pass -Iscc to override its path.
 #>
 param(
