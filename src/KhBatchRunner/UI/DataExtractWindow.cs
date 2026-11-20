@@ -213,6 +213,10 @@ public sealed class DataExtractWindow : Form
             // Turn the GUIDs in Forma's own extract names into project names before anything is
             // shown. One extra request for the hub's project list, best-effort — see NameProjects.
             DataConnectorClient.NameProjects(_dm, hub, requests);
+            // First choice: whatever finished last, under any request. Forma's one-off "Run now"
+            // makes a new request each time, so a set pinned to one request never sees those.
+            if (requests.Count > 0)
+                _requestCombo.Items.Add(new DataConnectorRequest { Id = DataExtractInputSet.AnyRequest, IsActive = true });
             foreach (DataConnectorRequest r in requests
                          .OrderByDescending(r => r.CreatedAt ?? DateTime.MinValue))
                 _requestCombo.Items.Add(r);

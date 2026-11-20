@@ -603,6 +603,9 @@ internal static class Program
         Expect("a set naming an account and an extract has a target", set.HasTarget, true);
         Expect("one missing half is not a target",
             new DataExtractInputSet { HubId = set.HubId }.HasTarget, false);
+        var any = new DataExtractInputSet { HubId = set.HubId, HubName = "SampleHub", RequestId = DataExtractInputSet.AnyRequest };
+        Expect("'any request' is a target", any.HasTarget && any.IsAnyRequest, true);
+        Expect("…and says so in its label", any.TargetLabel.Contains("newest extract of any request"), true);
 
         // The account id the Data Connector paths want is the hub id WITHOUT Data Management's
         // "b." prefix. Verified against the live API 2026-09-18; the sets store the prefixed form,

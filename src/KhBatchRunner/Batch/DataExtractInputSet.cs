@@ -74,8 +74,16 @@ public sealed class DataExtractInputSet
     public string DestinationFolder { get; set; } = "";
     public string ProjectLogName { get; set; } = "Get Data Extract";
 
-    /// <summary>True once an account and a request have been chosen. A set without both can only
-    /// produce an empty run, so the dialogs refuse to save or schedule it.</summary>
+    /// <summary>A <see cref="RequestId"/> meaning "the newest finished extract of ANY of my requests
+    /// on the account". Forma's one-off "Run now" makes a new request every time, so a set pinned
+    /// to one request would never see those.</summary>
+    public const string AnyRequest = "*";
+
+    [JsonIgnore]
+    public bool IsAnyRequest => RequestId == AnyRequest;
+
+    /// <summary>True once an account and a request (or <see cref="AnyRequest"/>) have been chosen.
+    /// A set without both can only produce an empty run, so the dialogs refuse to save or schedule it.</summary>
     [JsonIgnore]
     public bool HasTarget => !string.IsNullOrWhiteSpace(HubId) && !string.IsNullOrWhiteSpace(RequestId);
 
@@ -97,7 +105,8 @@ public sealed class DataExtractInputSet
             string project = string.IsNullOrWhiteSpace(ProjectName)
                 ? string.IsNullOrWhiteSpace(ProjectId) ? "whole account" : ProjectId
                 : ProjectName;
-            string request = string.IsNullOrWhiteSpace(RequestName) ? RequestId : RequestName;
+            string request = IsAnyRequest ? "newest extract of any request"
+                : string.IsNullOrWhiteSpace(RequestName) ? RequestId : RequestName;
             // The request label already leads with the project when the window resolved one, so
             // repeating it would read as "SampleHub → Sample Project → Sample Project — weekly".
             return request.StartsWith(project, StringComparison.OrdinalIgnoreCase)

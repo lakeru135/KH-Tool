@@ -40,6 +40,7 @@ public sealed class DataConnectorRequest
     {
         get
         {
+            if (Id == Batch.DataExtractInputSet.AnyRequest) return "Newest extract of any request";
             string what = string.IsNullOrWhiteSpace(ProjectName)
                 ? string.IsNullOrWhiteSpace(ProjectId) ? "Whole account" : "Project " + Short(ProjectId)
                 : ProjectName;
@@ -285,11 +286,24 @@ public sealed class DataConnectorClient
     /// <summary>
     /// The newest run of <paramref name="requestId"/> that finished successfully, and the newest
     /// run of any state — so a caller can say "last night's run is still going" instead of
-    /// silently handing back the run from the night before.
+    /// silently handing back the run from the night before. A blank request id means the newest
+    /// run of ANY of the user's requests on the account.
     /// </summary>
     public (DataConnectorJob? Latest, DataConnectorJob? LatestSuccessful) GetLatestJobs(
         string accountId, string requestId)
     {
+        // No request named: every request the signed-in user created on the account counts. A
+        // one-off "Run now" in Forma makes a new request each time, so the newest extract is often
+        // not under the request a saved set remembers.
+        if (string.IsNullOrWhiteSpace(requestId) || requestId == Batch.DataExtractInputSet.AnyRequest)
+        {
+            List<DataConnectorJob> all = GetRequests(accountId)
+                .SelectMany(r => GetJobs(accountId, r.Id))
+                .OrderByDescending(j => j.CompletedAt ?? j.CreatedAt ?? DateTime.MinValue)
+                .ToList();
+            return (all.FirstOrDefault(), all.FirstOrDefault(j => j.IsSuccess));
+        }
+
         List<DataConnectorJob> jobs = GetJobs(accountId, requestId);
         return (jobs.FirstOrDefault(), jobs.FirstOrDefault(j => j.IsSuccess));
     }
