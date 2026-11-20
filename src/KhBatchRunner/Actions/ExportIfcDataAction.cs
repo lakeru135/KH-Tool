@@ -129,6 +129,7 @@ public sealed class ExportIfcDataAction : BatchActionBase
         string folder = Path.Combine(_runFolder, folderName);
         var entry = new ManifestModel { Name = modelName, Folder = folder, Status = "failed" };
         _manifest.Add(entry);
+        ReadFormaIds(doc, entry);
 
         try
         {
@@ -303,6 +304,8 @@ public sealed class ExportIfcDataAction : BatchActionBase
             {
                 name = m.Name, folder = m.Folder, ifc = m.Ifc, status = m.Status,
                 elementsCsv = m.ElementsCsv, roomsCsv = m.RoomsCsv, materialsCsv = m.MaterialsCsv, error = m.Error,
+                forma = string.IsNullOrEmpty(m.FormaItem) ? null
+                    : new { hub = m.FormaHub, project = m.FormaProject, folder = m.FormaFolder, item = m.FormaItem },
             }),
         };
         File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
@@ -401,5 +404,29 @@ public sealed class ExportIfcDataAction : BatchActionBase
         public string RoomsCsv { get; set; } = "";
         public string MaterialsCsv { get; set; } = "";
         public string Error { get; set; } = "";
+        /// <summary>Where a cloud model lives in Forma (Docs ids), so the report site can link to it;
+        /// empty for a local model.</summary>
+        public string FormaHub { get; set; } = "";
+        public string FormaProject { get; set; } = "";
+        public string FormaFolder { get; set; } = "";
+        public string FormaItem { get; set; } = "";
+    }
+
+    /// <summary>The Docs ids of a cloud model (hub, project, folder, item lineage). Best effort: a
+    /// local model has none, and a lookup that fails only costs the site its "open in Forma" link.</summary>
+    private static void ReadFormaIds(Document doc, ManifestModel entry)
+    {
+        try
+        {
+            if (!doc.IsModelInCloud) return;
+            entry.FormaItem = doc.GetCloudModelUrn() ?? "";
+            entry.FormaHub = doc.GetHubId() ?? "";
+            entry.FormaProject = doc.GetProjectId() ?? "";
+            entry.FormaFolder = doc.GetCloudFolderId(false) ?? "";
+        }
+        catch (Exception ex)
+        {
+            Diagnostics.RunTrace.Mark($"{DisplayName} | Forma ids not read: {ex.Message}");
+        }
     }
 }

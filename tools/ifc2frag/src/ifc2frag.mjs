@@ -227,6 +227,8 @@ function refreshLatest(manifest, results, log) {
       name: m.name, folder: safeName(m.name), runStamp: manifest.runStamp,
       frag: r.frag, ifc: m.ifc, idmap: "idmap.csv", elements: m.elementsCsv || "", rooms: m.roomsCsv || "", materials: m.materialsCsv || "",
       fragBytes: r.fragBytes, updated: new Date().toISOString(),
+      // Where the model lives in Forma (Docs ids), for the site's "open in Forma" link.
+      ...(m.forma ? { forma: m.forma } : {}),
     };
     index.models = (index.models ?? []).filter((x) => x.name !== m.name).concat(entry)
       .sort((a, b) => a.name.localeCompare(b.name));
