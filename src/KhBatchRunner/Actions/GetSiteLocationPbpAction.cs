@@ -23,6 +23,15 @@ namespace KhBatchRunner.Actions;
 /// one CSV still answers everything and filters cleanly, the same shape
 /// <see cref="GetRvtLinksWorksetAction"/> uses: <see cref="Columns"/> describes the detail rows,
 /// <see cref="Run"/>'s dictionary is the per-model tracking summary.
+///
+/// PBP / SURVEY ARE SHARED COORDINATES (since 2.1.0.3). <see cref="BasePoint.Position"/> is the
+/// point's place relative to the model's INTERNAL origin, so models that share one coordinate
+/// system but were modelled with different internal origins reported different PBP numbers for
+/// the same physical point. The PBP / Survey columns are now each point run through that row's
+/// site (<see cref="ProjectLocation.GetProjectPosition"/>) — the E/W, N/S and Elev Revit shows on
+/// the point itself — so correctly coordinated models agree. Because the answer depends on the
+/// site, each site row carries its own values; the summary uses the active site. The old internal
+/// reading survives as "PBP Internal X/Y/Z": it is how a moved internal origin is spotted.
 /// </summary>
 public sealed class GetSiteLocationPbpAction : BatchActionBase
 {
@@ -44,12 +53,14 @@ public sealed class GetSiteLocationPbpAction : BatchActionBase
         "Site E/W (m)", "Site N/S (m)", "Site Elev (m)",
         "Latitude", "Longitude", "Place Name", "Site Count",
         "PBP E/W (m)", "PBP N/S (m)", "PBP Elev (m)",
-        "Survey E/W (m)", "Survey N/S (m)", "Survey Elev (m)"
+        "Survey E/W (m)", "Survey N/S (m)", "Survey Elev (m)",
+        "PBP Internal X (m)", "PBP Internal Y (m)", "PBP Internal Z (m)"
     };
 
     public override IReadOnlyDictionary<string, string> Run(UIApplication uiApp, Document doc)
     {
         Facts f = Read(doc);
+        SiteRow a = f.Sites.FirstOrDefault(s => s.IsPrimary);
         return new Dictionary<string, string>
         {
             ["Latitude"] = f.Latitude,
@@ -59,12 +70,15 @@ public sealed class GetSiteLocationPbpAction : BatchActionBase
             ["Site Count"] = f.Sites.Count.ToString(CultureInfo.InvariantCulture),
             ["All Sites"] = string.Join(", ", f.Sites.Select(s => s.Name)),
             ["True North (deg)"] = f.ActiveTrueNorth,
-            ["PBP E/W (m)"] = f.PbpEw,
-            ["PBP N/S (m)"] = f.PbpNs,
-            ["PBP Elev (m)"] = f.PbpElev,
-            ["Survey E/W (m)"] = f.SurveyEw,
-            ["Survey N/S (m)"] = f.SurveyNs,
-            ["Survey Elev (m)"] = f.SurveyElev,
+            ["PBP E/W (m)"] = a.PbpEw ?? "",
+            ["PBP N/S (m)"] = a.PbpNs ?? "",
+            ["PBP Elev (m)"] = a.PbpElev ?? "",
+            ["Survey E/W (m)"] = a.SurveyEw ?? "",
+            ["Survey N/S (m)"] = a.SurveyNs ?? "",
+            ["Survey Elev (m)"] = a.SurveyElev ?? "",
+            ["PBP Internal X (m)"] = f.PbpInternalX,
+            ["PBP Internal Y (m)"] = f.PbpInternalY,
+            ["PBP Internal Z (m)"] = f.PbpInternalZ,
         };
     }
 
@@ -87,12 +101,15 @@ public sealed class GetSiteLocationPbpAction : BatchActionBase
                 ["Longitude"] = f.Longitude,
                 ["Place Name"] = f.PlaceName,
                 ["Site Count"] = f.Sites.Count.ToString(CultureInfo.InvariantCulture),
-                ["PBP E/W (m)"] = f.PbpEw,
-                ["PBP N/S (m)"] = f.PbpNs,
-                ["PBP Elev (m)"] = f.PbpElev,
-                ["Survey E/W (m)"] = f.SurveyEw,
-                ["Survey N/S (m)"] = f.SurveyNs,
-                ["Survey Elev (m)"] = f.SurveyElev,
+                ["PBP E/W (m)"] = s.PbpEw ?? "",
+                ["PBP N/S (m)"] = s.PbpNs ?? "",
+                ["PBP Elev (m)"] = s.PbpElev ?? "",
+                ["Survey E/W (m)"] = s.SurveyEw ?? "",
+                ["Survey N/S (m)"] = s.SurveyNs ?? "",
+                ["Survey Elev (m)"] = s.SurveyElev ?? "",
+                ["PBP Internal X (m)"] = f.PbpInternalX,
+                ["PBP Internal Y (m)"] = f.PbpInternalY,
+                ["PBP Internal Z (m)"] = f.PbpInternalZ,
             });
         }
         return rows;
@@ -106,6 +123,12 @@ public sealed class GetSiteLocationPbpAction : BatchActionBase
         public string EastWest { get; init; }
         public string NorthSouth { get; init; }
         public string Elevation { get; init; }
+        public string PbpEw { get; init; }
+        public string PbpNs { get; init; }
+        public string PbpElev { get; init; }
+        public string SurveyEw { get; init; }
+        public string SurveyNs { get; init; }
+        public string SurveyElev { get; init; }
     }
 
     private readonly struct Facts
@@ -115,12 +138,9 @@ public sealed class GetSiteLocationPbpAction : BatchActionBase
         public string PlaceName { get; init; }
         public string ActiveSite { get; init; }
         public string ActiveTrueNorth { get; init; }
-        public string PbpEw { get; init; }
-        public string PbpNs { get; init; }
-        public string PbpElev { get; init; }
-        public string SurveyEw { get; init; }
-        public string SurveyNs { get; init; }
-        public string SurveyElev { get; init; }
+        public string PbpInternalX { get; init; }
+        public string PbpInternalY { get; init; }
+        public string PbpInternalZ { get; init; }
         public IReadOnlyList<SiteRow> Sites { get; init; }
     }
 
@@ -138,6 +158,7 @@ public sealed class GetSiteLocationPbpAction : BatchActionBase
             // Each site's position is read independently: a location that cannot be read must not
             // cost the model its whole row, and a model with one broken site still reports the rest.
             string northDeg = "", ew = "", ns = "", elev = "";
+            string pbpEw = "", pbpNs = "", pbpElev = "", svEw = "", svNs = "", svElev = "";
             try
             {
                 ProjectPosition p = location.GetProjectPosition(XYZ.Zero);
@@ -148,6 +169,24 @@ public sealed class GetSiteLocationPbpAction : BatchActionBase
             }
             catch { /* leave the position blank; the name and primary flag still stand */ }
 
+            // The PBP / Survey in THIS site's shared coordinates — what Revit shows on the points.
+            try
+            {
+                ProjectPosition p = location.GetProjectPosition(pbp);
+                pbpEw = Metres(p.EastWest);
+                pbpNs = Metres(p.NorthSouth);
+                pbpElev = Metres(p.Elevation);
+            }
+            catch { }
+            try
+            {
+                ProjectPosition p = location.GetProjectPosition(survey);
+                svEw = Metres(p.EastWest);
+                svNs = Metres(p.NorthSouth);
+                svElev = Metres(p.Elevation);
+            }
+            catch { }
+
             sites.Add(new SiteRow
             {
                 Name = location.Name,
@@ -156,6 +195,12 @@ public sealed class GetSiteLocationPbpAction : BatchActionBase
                 EastWest = ew,
                 NorthSouth = ns,
                 Elevation = elev,
+                PbpEw = pbpEw,
+                PbpNs = pbpNs,
+                PbpElev = pbpElev,
+                SurveyEw = svEw,
+                SurveyNs = svNs,
+                SurveyElev = svElev,
             });
         }
 
@@ -173,12 +218,9 @@ public sealed class GetSiteLocationPbpAction : BatchActionBase
             PlaceName = site.PlaceName ?? "",
             ActiveSite = active.Name,
             ActiveTrueNorth = primary.TrueNorth ?? "",
-            PbpEw = Metres(pbp.X),
-            PbpNs = Metres(pbp.Y),
-            PbpElev = Metres(pbp.Z),
-            SurveyEw = Metres(survey.X),
-            SurveyNs = Metres(survey.Y),
-            SurveyElev = Metres(survey.Z),
+            PbpInternalX = Metres(pbp.X),
+            PbpInternalY = Metres(pbp.Y),
+            PbpInternalZ = Metres(pbp.Z),
             Sites = sites,
         };
     }
