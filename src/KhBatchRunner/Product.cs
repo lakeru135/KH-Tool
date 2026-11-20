@@ -38,7 +38,7 @@ internal static class Product
 #endif
 
     // One version line for every edition: the public repository starts at 2.0.0.
-    public const string Version = "2.1.0.2";
+    public const string Version = "2.1.0.3";
     public const string Publisher = "Kanghun BIM";
 
     /// <summary>
@@ -118,6 +118,8 @@ internal static class Product
     /// <summary>Short "what's new" list shown on the About dialog. Keep the newest at the top.</summary>
 #if EDITION_DRW
     public const string Changelog =
+        "DRW Helper (2.1.0.3) — review build:\n" +
+        "• Version kept in step with KH-Tool 2.1.0.3; the DRW tools are unchanged.\n\n" +
         "DRW Helper (2.1.0.2) — review build:\n" +
         "• Adds a build for Revit 2027.\n\n" +
         "DRW Helper (2.1.0):\n" +
@@ -130,6 +132,16 @@ internal static class Product
         "• Setting: Model Set, Batch Run, Sync View.";
 #else
     public const string Changelog =
+        "KH-Tool (2.1.0.3) — review build:\n" +
+        "• Export IFC + Data keeps only the latest IFC: after conversion each model is moved into " +
+        "latest\\, replacing the previous run's files, instead of a full copy per run in runs\\. " +
+        "Tick \"Also keep each run's IFC in runs\\\" for the old behaviour. Runs are now kept 7 days " +
+        "by default (was 14).\n" +
+        "• A blank Output folder now means <run destination>\\IFC (was the destination itself), the " +
+        "folder the BIM report reads when a project folder is the run's destination.\n" +
+        "• Get Site Location & PBP: the PBP and Survey columns are now shared coordinates (the E/W, " +
+        "N/S and Elev Revit shows on the point), per site row, so coordinated models agree. The old " +
+        "internal-origin reading is kept as PBP Internal X/Y/Z.\n\n" +
         "KH-Tool (2.1.0.2) — review build:\n" +
         "• Adds a build for Revit 2027.\n\n" +
         "KH-Tool (2.1.0.1) — review build:\n" +

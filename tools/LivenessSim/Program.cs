@@ -3275,6 +3275,7 @@ internal static class Program
             ExtraParameters = new List<string> { "Mark", "Comments" },
             ConvertToFrag = false,
             KeepRunsDays = 3,
+            KeepIfcInRuns = true,
         };
 
         ExportIfcInputSet copy = spec.Clone();
@@ -3285,7 +3286,9 @@ internal static class Program
         Expect("…its data-file switches", copy.WriteElementsCsv || copy.WriteRoomsCsv, false);
         Expect("…its extra parameters", string.Join("|", copy.ExtraParameters), "Mark|Comments");
         Expect("…as a separate list", ReferenceEquals(copy.ExtraParameters, spec.ExtraParameters), false);
-        Expect("…the conversion switch and retention", !copy.ConvertToFrag && copy.KeepRunsDays == 3, true);
+        Expect("…the conversion switch and retention",
+            !copy.ConvertToFrag && copy.KeepRunsDays == 3 && copy.KeepIfcInRuns, true);
+        Expect("a new IFC spec keeps only the latest IFC", new ExportIfcInputSet().KeepIfcInRuns, false);
 
         var job = new ScheduledJob
         {
@@ -3298,8 +3301,12 @@ internal static class Program
         Expect("…as a COPY", ReferenceEquals(child.ExportIfcSpec, spec), false);
 
         Expect("an explicit IFC output folder is used", spec.ResolveOutputFolder(@"C:\run"), @"C:\sim\ifc");
-        Expect("an empty one falls back to the run's destination",
-            new ExportIfcInputSet().ResolveOutputFolder(@"C:\run"), @"C:\run");
+        Expect("an empty one falls back to <run destination>\\IFC",
+            new ExportIfcInputSet().ResolveOutputFolder(@"C:\run"), @"C:\run\IFC");
+        Expect("…and to nothing when there is no destination",
+            new ExportIfcInputSet().ResolveOutputFolder(""), "");
+        Expect("the blank-folder label names the IFC sub-folder",
+            new ExportIfcInputSet().OutputLabel, "run destination\\IFC");
         Expect("a blank view filter reads as whole model", new ExportIfcInputSet().ScopeLabel, "whole model");
         Expect("a job that does not export IFC carries no snapshot",
             new ScheduledJob().ExportIfcSpec, (ExportIfcInputSet?)null);

@@ -42,8 +42,12 @@ public sealed class ExportIfcInputSet
     /// </summary>
     public string ViewTitleContains { get; set; } = "";
 
-    /// <summary>Root folder for runs\, latest\ and history\. Empty means the run's Destination Folder.</summary>
+    /// <summary>Root folder for runs\, latest\ and history\. Empty means <c>&lt;run destination&gt;\IFC</c>,
+    /// the folder the BIM report looks in when a project folder is the run's destination.</summary>
     public string OutputFolder { get; set; } = "";
+
+    /// <summary>The sub-folder of the run destination used when <see cref="OutputFolder"/> is blank.</summary>
+    public const string DefaultOutputSubfolder = "IFC";
 
     // ---- IFC options ------------------------------------------------------------
 
@@ -72,7 +76,15 @@ public sealed class ExportIfcInputSet
     public bool ConvertToFrag { get; set; } = true;
 
     /// <summary>runs\ folders older than this many days are deleted by the converter. 0 keeps all.</summary>
-    public int KeepRunsDays { get; set; } = 14;
+    public int KeepRunsDays { get; set; } = 7;
+
+    /// <summary>
+    /// false (default): once a model is converted, its files are MOVED from runs\&lt;stamp&gt;\ into
+    /// latest\, so the .ifc in latest\ is the only one kept and each run replaces it; runs\ keeps only
+    /// the manifest and log (plus the .ifc of a model whose conversion failed, until it is pruned).
+    /// true: the old behaviour, a full copy per run in runs\ as well, which needs far more disk.
+    /// </summary>
+    public bool KeepIfcInRuns { get; set; }
 
     // ---- run-log fields (standalone command only) --------------------------------
 
@@ -90,11 +102,19 @@ public sealed class ExportIfcInputSet
         : $"3D view containing '{ViewTitleContains}'";
 
     [JsonIgnore]
-    public string OutputLabel => string.IsNullOrWhiteSpace(OutputFolder) ? "run destination" : OutputFolder;
+    public string OutputLabel => string.IsNullOrWhiteSpace(OutputFolder)
+        ? $"run destination\\{DefaultOutputSubfolder}"
+        : OutputFolder;
 
-    /// <summary>The set's own folder when it has one, else the run's destination.</summary>
-    public string ResolveOutputFolder(string runDestinationFolder) =>
-        !string.IsNullOrWhiteSpace(OutputFolder) ? OutputFolder : runDestinationFolder;
+    /// <summary>The set's own folder when it has one, else <c>&lt;run destination&gt;\IFC</c>; empty when
+    /// there is neither.</summary>
+    public string ResolveOutputFolder(string runDestinationFolder)
+    {
+        if (!string.IsNullOrWhiteSpace(OutputFolder)) return OutputFolder;
+        return string.IsNullOrWhiteSpace(runDestinationFolder)
+            ? ""
+            : System.IO.Path.Combine(runDestinationFolder, DefaultOutputSubfolder);
+    }
 
     /// <summary>Deep copy for split runs. Every new field above must be copied here too, or a chunk
     /// child arrives without it.</summary>
@@ -113,6 +133,7 @@ public sealed class ExportIfcInputSet
         ExtraParameters = new List<string>(ExtraParameters ?? new List<string>()),
         ConvertToFrag = ConvertToFrag,
         KeepRunsDays = KeepRunsDays,
+        KeepIfcInRuns = KeepIfcInRuns,
         DestinationFolder = DestinationFolder,
         ProjectLogName = ProjectLogName
     };

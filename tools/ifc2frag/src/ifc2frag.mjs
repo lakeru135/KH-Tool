@@ -1,5 +1,6 @@
 // ifc2frag — converts the IFC files written by KH-Tool's "Export IFC + Data" action into That Open
-// .frag files, then refreshes the report's "latest" folder and prunes old runs.
+// .frag files, then refreshes the report's "latest" folder (moving the files there unless the
+// manifest says keepIfcInRuns) and prunes old runs.
 //
 //   node ifc2frag.cjs --manifest <runs\<stamp>\manifest-<pid>.json> [--wait-pid <pid>]
 //   node ifc2frag.cjs --one <in.ifc> <out.frag>          (internal: one file, run as a child process)
@@ -182,9 +183,15 @@ function runChild(inIfc, outFrag) {
   });
 }
 
-/** Copies each converted model into latest\<Model>\ (swap, so a reader never sees a half-copied
- *  folder) and rewrites latest\index.json. Models that failed this run keep their previous entry. */
+/** Puts each converted model into latest\<Model>\ (swap, so a reader never sees a half-filled
+ *  folder) and rewrites latest\index.json. Models that failed this run keep their previous entry.
+ *
+ *  keepIfcInRuns false (the default, and what a manifest without the field means): the files are
+ *  MOVED out of runs\<stamp>\<model>\, so the .ifc in latest\ is the only copy and the swap replaces
+ *  the previous one. A failed model is never touched, so its .ifc stays in runs\ until pruned.
+ *  keepIfcInRuns true: copied, leaving a full copy of every run in runs\. */
 function refreshLatest(manifest, results, log) {
+  const move = manifest.keepIfcInRuns !== true;
   const latest = path.join(manifest.outputRoot, "latest");
   mkdirSync(latest, { recursive: true });
   const indexPath = path.join(latest, "index.json");
@@ -198,7 +205,16 @@ function refreshLatest(manifest, results, log) {
     const staging = target + ".new", old = target + ".old";
     rmSync(staging, { recursive: true, force: true });
     mkdirSync(staging, { recursive: true });
-    for (const f of readdirSync(m.folder)) copyFileSync(path.join(m.folder, f), path.join(staging, f));
+    for (const f of readdirSync(m.folder)) {
+      const from = path.join(m.folder, f), to = path.join(staging, f);
+      if (!move) { copyFileSync(from, to); continue; }
+      // Same volume, so a rename is instant. If it is refused (a sync client or viewer holding the
+      // file), copy instead: latest\ must still be complete; the run folder is pruned later anyway.
+      try { renameSync(from, to); } catch (e) { copyFileSync(from, to); log(`${m.name}: kept ${f} in runs\\ (${e.code || e.message})`); }
+    }
+    if (move) {
+      try { if (readdirSync(m.folder).length === 0) rmSync(m.folder, { recursive: true, force: true }); } catch { /* best effort */ }
+    }
     rmSync(old, { recursive: true, force: true });
     if (existsSync(target)) renameSync(target, old);
     renameSync(staging, target);
@@ -214,7 +230,7 @@ function refreshLatest(manifest, results, log) {
   }
   index.updated = new Date().toISOString();
   writeJson(indexPath, index);
-  log(`latest: ${index.models.length} model(s) in index`);
+  log(`latest: ${index.models.length} model(s) in index (${move ? "moved; only the latest IFC is kept" : "copied; runs\\ keeps its IFC"})`);
 }
 
 /** Deletes runs\<yyyyMMdd_HHmmss> folders older than keepRunsDays. Only folders whose NAME is a

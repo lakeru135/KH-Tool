@@ -286,6 +286,7 @@ public sealed class ExportIfcDataAction : BatchActionBase
             runStamp = _runStamp,
             outputRoot = _root,
             keepRunsDays = _spec.KeepRunsDays,
+            keepIfcInRuns = _spec.KeepIfcInRuns,
             producedBy = $"{Product.Name} {Product.Version}",
             models = _manifest.Select(m => new
             {

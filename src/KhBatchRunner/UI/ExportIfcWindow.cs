@@ -27,6 +27,7 @@ public sealed class ExportIfcWindow : Form
     private readonly CheckBox _convertToFrag;
     private readonly TextBox _extraParamsBox;
     private readonly TextBox _keepDaysBox;
+    private readonly CheckBox _keepIfcInRuns;
 
     private readonly DimmableCheckedListBox _modelSetsList;
     private readonly TextBox _destBox;
@@ -65,9 +66,9 @@ public sealed class ExportIfcWindow : Form
         Label note = FormLayout.NoteLabel(this,
             "Writes, for each model, an IFC of one 3D view (the first whose title contains the text " +
             "below; blank = whole model), elements.csv and rooms.csv, into <output>\\runs\\<run time>\\. " +
-            "When the run ends the IFC is converted for the BIM report and <output>\\latest\\ is " +
-            "refreshed; on a scheduled run that happens after Revit has closed. Nothing is saved back " +
-            "to the model.");
+            "When the run ends the IFC is converted for the BIM report and moved into <output>\\latest\\, " +
+            "replacing the previous one; on a scheduled run that happens after Revit has closed. A blank " +
+            "output folder means <destination>\\IFC. Nothing is saved back to the model.");
 
         // Editable, like the "Input set:" combo of Cut model and its siblings: the name typed here
         // is the name Save set saves under. This used to be a fixed list plus a separate "Set name"
@@ -120,8 +121,9 @@ public sealed class ExportIfcWindow : Form
             grid.Controls.Add(c);
 
         _extraParamsBox = new TextBox();
-        _keepDaysBox = new TextBox { Text = "14", Width = 60 };
-        var keepRow = FormLayout.FlowRow(_keepDaysBox, Inline("days (0 = keep every run)"));
+        _keepDaysBox = new TextBox { Text = "7", Width = 60 };
+        _keepIfcInRuns = Chk("Also keep each run's IFC in runs\\ (uses much more disk)");
+        var keepRow = FormLayout.FlowRow(_keepDaysBox, Inline("days (0 = keep every run)"), _keepIfcInRuns);
 
         // A tick list, not a single-select list: one or more sets, combined into one run — the same
         // control and the same rule as the Check/Action buttons (RunActionWindow).
@@ -244,6 +246,7 @@ public sealed class ExportIfcWindow : Form
         _convertToFrag.Checked = s.ConvertToFrag;
         _extraParamsBox.Text = string.Join(", ", s.ExtraParameters ?? new List<string>());
         _keepDaysBox.Text = s.KeepRunsDays.ToString(CultureInfo.InvariantCulture);
+        _keepIfcInRuns.Checked = s.KeepIfcInRuns;
     }
 
     private ExportIfcInputSet Current(string name)
@@ -253,7 +256,7 @@ public sealed class ExportIfcWindow : Form
 
         // A retention that will not parse falls back to the default rather than failing the dialog.
         if (!int.TryParse(_keepDaysBox.Text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int keep) || keep < 0)
-            keep = 14;
+            keep = 7;
 
         return new ExportIfcInputSet
         {
@@ -271,6 +274,7 @@ public sealed class ExportIfcWindow : Form
             ExtraParameters = _extraParamsBox.Text.Split(',')
                 .Select(p => p.Trim()).Where(p => p.Length > 0).Distinct().ToList(),
             KeepRunsDays = keep,
+            KeepIfcInRuns = _keepIfcInRuns.Checked,
             DestinationFolder = _destBox.Text.Trim(),
             ProjectLogName = string.IsNullOrWhiteSpace(_projectLogBox.Text) ? "Export IFC + Data" : _projectLogBox.Text.Trim()
         };

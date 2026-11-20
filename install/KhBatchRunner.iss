@@ -18,7 +18,7 @@
 ; which runs the builds and then ISCC.exe on this script.
 
 #define AppName "KH Batch Script Runner for Autodesk Forma"
-#define AppVersion "2.1.0.2"
+#define AppVersion "2.1.0.3"
 ; AppId (single-brace literal, matches [Setup]) + version, consumed by InstallerCommon.iss.
 #define InstAppId "{7E2C4D8A-3F51-4B9C-9E1D-2A6F0B4C8D31}"
 #define InstAppVersion AppVersion
@@ -86,6 +86,9 @@ Source: "{#Bin2024}\KhBatchLauncher.exe"; DestDir: "{commonappdata}\Autodesk\Rev
 Source: "{#Bin2024}\KhBatchLauncher.exe.config"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2024"; Check: RevitInstalled('2024'); Flags: ignoreversion skipifsourcedoesntexist
 ; KH-Tool AI Bridge: the MCP server Claude Code starts (net48), in its own subfolder
 Source: "{#Bin2024}\KhMcp\*"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2024\KhMcp"; Check: RevitInstalled('2024'); Flags: ignoreversion
+; Export IFC + Data's IFC-to-FRAG converter (node.exe + bundle), beside the dll where the action
+; looks for it. Identical for every year, so one source path: Inno stores it once.
+Source: "{#Bin2026}\IfcToFrag\*"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2024\IfcToFrag"; Check: RevitInstalled('2024'); Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; --- Revit 2025 (net8 — dll + deps.json) ---
 Source: "{#Bin2025}\*.dll";                     DestDir: "{commonappdata}\Autodesk\Revit\Addins\2025"; Check: RevitInstalled('2025'); Flags: ignoreversion
@@ -95,6 +98,9 @@ Source: "{#Bin2025}\KhBatchRunner.pdb";        DestDir: "{commonappdata}\Autodes
 Source: "{#Bin2025}\KhBatchLauncher.exe";      DestDir: "{commonappdata}\Autodesk\Revit\Addins\2025"; Check: RevitInstalled('2025'); Flags: ignoreversion
 Source: "{#Bin2025}\KhBatchLauncher.exe.config"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2025"; Check: RevitInstalled('2025'); Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#Bin2025}\KhMcp\*"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2025\KhMcp"; Check: RevitInstalled('2025'); Flags: ignoreversion
+; Export IFC + Data's IFC-to-FRAG converter (node.exe + bundle), beside the dll where the action
+; looks for it. Identical for every year, so one source path: Inno stores it once.
+Source: "{#Bin2026}\IfcToFrag\*"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2025\IfcToFrag"; Check: RevitInstalled('2025'); Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; --- Revit 2026 (net8 — dll + deps.json) ---
 Source: "{#Bin2026}\*.dll";                     DestDir: "{commonappdata}\Autodesk\Revit\Addins\2026"; Check: RevitInstalled('2026'); Flags: ignoreversion
@@ -104,6 +110,9 @@ Source: "{#Bin2026}\KhBatchRunner.pdb";        DestDir: "{commonappdata}\Autodes
 Source: "{#Bin2026}\KhBatchLauncher.exe";      DestDir: "{commonappdata}\Autodesk\Revit\Addins\2026"; Check: RevitInstalled('2026'); Flags: ignoreversion
 Source: "{#Bin2026}\KhBatchLauncher.exe.config"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2026"; Check: RevitInstalled('2026'); Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#Bin2026}\KhMcp\*"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2026\KhMcp"; Check: RevitInstalled('2026'); Flags: ignoreversion
+; Export IFC + Data's IFC-to-FRAG converter (node.exe + bundle), beside the dll where the action
+; looks for it. Identical for every year, so one source path: Inno stores it once.
+Source: "{#Bin2026}\IfcToFrag\*"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2026\IfcToFrag"; Check: RevitInstalled('2026'); Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; --- Revit 2027 (net10 — dll + deps.json) ---
 Source: "{#Bin2027}\*.dll";                     DestDir: "{commonappdata}\Autodesk\Revit\Addins\2027"; Check: RevitInstalled('2027'); Flags: ignoreversion
@@ -113,6 +122,9 @@ Source: "{#Bin2027}\KhBatchRunner.pdb";        DestDir: "{commonappdata}\Autodes
 Source: "{#Bin2027}\KhBatchLauncher.exe";      DestDir: "{commonappdata}\Autodesk\Revit\Addins\2027"; Check: RevitInstalled('2027'); Flags: ignoreversion
 Source: "{#Bin2027}\KhBatchLauncher.exe.config"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2027"; Check: RevitInstalled('2027'); Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#Bin2027}\KhMcp\*"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2027\KhMcp"; Check: RevitInstalled('2027'); Flags: ignoreversion
+; Export IFC + Data's IFC-to-FRAG converter (node.exe + bundle), beside the dll where the action
+; looks for it. Identical for every year, so one source path: Inno stores it once.
+Source: "{#Bin2026}\IfcToFrag\*"; DestDir: "{commonappdata}\Autodesk\Revit\Addins\2027\IfcToFrag"; Check: RevitInstalled('2027'); Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; POLICY-SAFE LAUNCHER COPY. A managed PC refused the ProgramData copy outright — "This program is
 ; blocked by group policy" — because the default Software Restriction Policy / AppLocker rule sets
