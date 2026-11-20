@@ -222,7 +222,7 @@ function refreshLatest(manifest, results, log) {
 
     const entry = {
       name: m.name, folder: safeName(m.name), runStamp: manifest.runStamp,
-      frag: r.frag, ifc: m.ifc, idmap: "idmap.csv", elements: m.elementsCsv || "", rooms: m.roomsCsv || "",
+      frag: r.frag, ifc: m.ifc, idmap: "idmap.csv", elements: m.elementsCsv || "", rooms: m.roomsCsv || "", materials: m.materialsCsv || "",
       fragBytes: r.fragBytes, updated: new Date().toISOString(),
     };
     index.models = (index.models ?? []).filter((x) => x.name !== m.name).concat(entry)

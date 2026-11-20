@@ -24,6 +24,7 @@ public sealed class ExportIfcWindow : Form
     private readonly CheckBox _baseQuantities;
     private readonly CheckBox _elementsCsv;
     private readonly CheckBox _roomsCsv;
+    private readonly CheckBox _materialsCsv;
     private readonly CheckBox _convertToFrag;
     private readonly TextBox _extraParamsBox;
     private readonly TextBox _keepDaysBox;
@@ -104,6 +105,7 @@ public sealed class ExportIfcWindow : Form
         _baseQuantities = Chk("Base quantities");
         _elementsCsv = Chk("Write elements.csv", true);
         _roomsCsv = Chk("Write rooms.csv (GFA)", true);
+        _materialsCsv = Chk("Write materials.csv (quantities)", true);
         _convertToFrag = Chk("Convert for the BIM report", true);
 
         var grid = new TableLayoutPanel
@@ -116,7 +118,7 @@ public sealed class ExportIfcWindow : Form
         foreach (Control c in new Control[]
                  {
                      _sharedCoordinates, _commonPsets, _revitPsets, _baseQuantities,
-                     _elementsCsv, _roomsCsv, _convertToFrag,
+                     _elementsCsv, _roomsCsv, _materialsCsv, _convertToFrag,
                  })
             grid.Controls.Add(c);
 
@@ -243,6 +245,7 @@ public sealed class ExportIfcWindow : Form
         _baseQuantities.Checked = s.ExportBaseQuantities;
         _elementsCsv.Checked = s.WriteElementsCsv;
         _roomsCsv.Checked = s.WriteRoomsCsv;
+        _materialsCsv.Checked = s.WriteMaterialsCsv;
         _convertToFrag.Checked = s.ConvertToFrag;
         _extraParamsBox.Text = string.Join(", ", s.ExtraParameters ?? new List<string>());
         _keepDaysBox.Text = s.KeepRunsDays.ToString(CultureInfo.InvariantCulture);
@@ -270,6 +273,7 @@ public sealed class ExportIfcWindow : Form
             ExportBaseQuantities = _baseQuantities.Checked,
             WriteElementsCsv = _elementsCsv.Checked,
             WriteRoomsCsv = _roomsCsv.Checked,
+            WriteMaterialsCsv = _materialsCsv.Checked,
             ConvertToFrag = _convertToFrag.Checked,
             ExtraParameters = _extraParamsBox.Text.Split(',')
                 .Select(p => p.Trim()).Where(p => p.Length > 0).Distinct().ToList(),

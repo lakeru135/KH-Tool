@@ -3272,6 +3272,7 @@ internal static class Program
             ExportBaseQuantities = true,
             WriteElementsCsv = false,
             WriteRoomsCsv = false,
+            WriteMaterialsCsv = false,
             ExtraParameters = new List<string> { "Mark", "Comments" },
             ConvertToFrag = false,
             KeepRunsDays = 3,
@@ -3283,7 +3284,8 @@ internal static class Program
         Expect("…its schema", copy.Schema, IfcSchemaChoice.Ifc2x3CoordinationView2);
         Expect("…its coordinate and property-set options",
             !copy.UseSharedCoordinates && !copy.ExportCommonPropertySets && copy.ExportRevitPropertySets && copy.ExportBaseQuantities, true);
-        Expect("…its data-file switches", copy.WriteElementsCsv || copy.WriteRoomsCsv, false);
+        Expect("…its data-file switches", copy.WriteElementsCsv || copy.WriteRoomsCsv || copy.WriteMaterialsCsv, false);
+        Expect("a new IFC spec writes materials.csv", new ExportIfcInputSet().WriteMaterialsCsv, true);
         Expect("…its extra parameters", string.Join("|", copy.ExtraParameters), "Mark|Comments");
         Expect("…as a separate list", ReferenceEquals(copy.ExtraParameters, spec.ExtraParameters), false);
         Expect("…the conversion switch and retention",

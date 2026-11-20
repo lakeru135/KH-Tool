@@ -65,6 +65,10 @@ public sealed class ExportIfcInputSet
     public bool WriteElementsCsv { get; set; } = true;
     public bool WriteRoomsCsv { get; set; } = true;
 
+    /// <summary>materials.csv: volume and area per element per material (paint as its own rows) —
+    /// the BIM report's Quantities by material.</summary>
+    public bool WriteMaterialsCsv { get; set; } = true;
+
     /// <summary>Extra parameter names added as columns to elements.csv and rooms.csv, read from the
     /// instance first and then its type. Blank cells where an element has no such parameter.</summary>
     public List<string> ExtraParameters { get; set; } = new();
@@ -130,6 +134,7 @@ public sealed class ExportIfcInputSet
         ExportBaseQuantities = ExportBaseQuantities,
         WriteElementsCsv = WriteElementsCsv,
         WriteRoomsCsv = WriteRoomsCsv,
+        WriteMaterialsCsv = WriteMaterialsCsv,
         ExtraParameters = new List<string>(ExtraParameters ?? new List<string>()),
         ConvertToFrag = ConvertToFrag,
         KeepRunsDays = KeepRunsDays,

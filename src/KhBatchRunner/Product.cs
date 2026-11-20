@@ -38,7 +38,7 @@ internal static class Product
 #endif
 
     // One version line for every edition: the public repository starts at 2.0.0.
-    public const string Version = "2.1.0.3";
+    public const string Version = "2.1.0.4";
     public const string Publisher = "Kanghun BIM";
 
     /// <summary>
@@ -118,6 +118,8 @@ internal static class Product
     /// <summary>Short "what's new" list shown on the About dialog. Keep the newest at the top.</summary>
 #if EDITION_DRW
     public const string Changelog =
+        "DRW Helper (2.1.0.4) — review build:\n" +
+        "• Version kept in step with KH-Tool 2.1.0.4; the DRW tools are unchanged.\n\n" +
         "DRW Helper (2.1.0.3) — review build:\n" +
         "• Version kept in step with KH-Tool 2.1.0.3; the DRW tools are unchanged.\n\n" +
         "DRW Helper (2.1.0.2) — review build:\n" +
@@ -132,6 +134,10 @@ internal static class Product
         "• Setting: Model Set, Batch Run, Sync View.";
 #else
     public const string Changelog =
+        "KH-Tool (2.1.0.4) — review build:\n" +
+        "• Export IFC + Data writes quantities: elements.csv gains Volume_m3 and Area_m2, and a new " +
+        "materials.csv holds volume and area per element per material (paint as its own rows) for the " +
+        "BIM report's Quantities. \"Write materials.csv (quantities)\" is on by default.\n\n" +
         "KH-Tool (2.1.0.3) — review build:\n" +
         "• Export IFC + Data keeps only the latest IFC: after conversion each model is moved into " +
         "latest\\, replacing the previous run's files, instead of a full copy per run in runs\\. " +

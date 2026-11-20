@@ -53,7 +53,7 @@ public sealed class ExportIfcDataAction : BatchActionBase
     public override string Name => DisplayName;
 
     public override IReadOnlyList<string> Columns { get; } = new[]
-        { "IFC File", "Scope", "View Used", "IFC Size (MB)", "Elements", "Rooms", "Placed Rooms m²", "Folder", "Contents" };
+        { "IFC File", "Scope", "View Used", "IFC Size (MB)", "Elements", "Material Rows", "Rooms", "Placed Rooms m²", "Folder", "Contents" };
 
     public override string PerModelNote => _note;
 
@@ -165,6 +165,13 @@ public sealed class ExportIfcDataAction : BatchActionBase
                 entry.ElementsCsv = "elements.csv";
             }
 
+            int materialRows = 0;
+            if (_spec.WriteMaterialsCsv)
+            {
+                materialRows = ModelDataWriter.WriteMaterials(doc, view, Path.Combine(folder, "materials.csv"));
+                entry.MaterialsCsv = "materials.csv";
+            }
+
             List<LevelArea> levels = new();
             int roomRows = 0;
             if (_spec.WriteRoomsCsv)
@@ -187,6 +194,7 @@ public sealed class ExportIfcDataAction : BatchActionBase
                     ["View Used"] = view?.Name ?? "",
                     ["IFC Size (MB)"] = (ifc.Length / 1048576.0).ToString("0.0", CultureInfo.InvariantCulture),
                     ["Elements"] = elements.ToString(CultureInfo.InvariantCulture),
+                    ["Material Rows"] = materialRows.ToString(CultureInfo.InvariantCulture),
                     ["Rooms"] = roomRows.ToString(CultureInfo.InvariantCulture),
                     ["Placed Rooms m²"] = levels.Sum(l => l.AreaM2).ToString("0.##", CultureInfo.InvariantCulture),
                     ["Folder"] = folder,
@@ -291,7 +299,7 @@ public sealed class ExportIfcDataAction : BatchActionBase
             models = _manifest.Select(m => new
             {
                 name = m.Name, folder = m.Folder, ifc = m.Ifc, status = m.Status,
-                elementsCsv = m.ElementsCsv, roomsCsv = m.RoomsCsv, error = m.Error,
+                elementsCsv = m.ElementsCsv, roomsCsv = m.RoomsCsv, materialsCsv = m.MaterialsCsv, error = m.Error,
             }),
         };
         File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
@@ -388,6 +396,7 @@ public sealed class ExportIfcDataAction : BatchActionBase
         public string Status { get; set; } = "";
         public string ElementsCsv { get; set; } = "";
         public string RoomsCsv { get; set; } = "";
+        public string MaterialsCsv { get; set; } = "";
         public string Error { get; set; } = "";
     }
 }
