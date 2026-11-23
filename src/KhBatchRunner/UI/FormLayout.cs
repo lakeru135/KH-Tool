@@ -37,6 +37,72 @@ internal static class FormLayout
         "Large runs split automatically across several Revit instances, sized to this PC. " +
         "\"Leave files open\" turns that off — a group's Revit has to close itself when it finishes.";
 
+    /// <summary>
+    /// Sizes <paramref name="host"/> to fit <paramref name="root"/> now, and keeps it fitted: the
+    /// dialog (and its minimum size) GROWS whenever the content needs more room than it has. Returns
+    /// the refit, for a caller whose content changes in ways no event here can see.
+    ///
+    /// <para><b>Why one measurement at construction is not enough.</b> The windows used to set
+    /// <c>ClientSize</c> from <c>root.PreferredSize</c> once, in the constructor. Anything that grew
+    /// the content afterwards — a restored saved set, a note that changes with a dropdown, Windows'
+    /// DPI scaling at Load, <see cref="AlignLabels(Form)"/> widening the label column at Shown — had
+    /// no room, and FormLayout's table does not scroll: the fill row (the model-set list) was
+    /// squeezed and drawn over the rows below it. That is how 2.1.0.8's Export NWC shipped its list
+    /// on top of "Export CSV log to:" in Revit, while looking right in the preview.</para>
+    ///
+    /// <para>Grow-only, so a user's own resize is never undone and a refit cannot loop.</para>
+    /// </summary>
+    /// <param name="beneath">A control docked below <paramref name="root"/> (a status strip) whose
+    /// height the client area must also hold.</param>
+    public static Action KeepFitted(Form host, Control root, Control? beneath = null)
+    {
+        void Fit()
+        {
+            if (host.IsDisposed) return;
+            // Inside-out first. Windows' DPI autoscale grows the controls (a combo goes from 28 to 33
+            // px at 125 %) while layout is suspended, and the table rows around them keep the
+            // heights they measured before — the combo then hangs out of its row. Re-laying out
+            // each container after its children makes every row read its children again.
+            RelayoutInsideOut(root);
+            // A table caches its preferred size per proposed width, so a relayout at the same width
+            // reads the stale row heights back. One pixel wider and back forces a fresh measure
+            // (measured: at 125 % the rows only corrected once the window had been resized).
+            Size was = host.ClientSize;
+            host.ClientSize = new Size(was.Width + 1, was.Height);
+            host.ClientSize = was;
+            Size need = root.PreferredSize;
+            if (beneath is { Visible: true }) need.Height += beneath.Height;
+            Size chrome = host.Size - host.ClientSize;
+            var client = new Size(Math.Max(host.ClientSize.Width, need.Width),
+                                  Math.Max(host.ClientSize.Height, need.Height));
+            if (client != host.ClientSize) host.ClientSize = client;
+            var min = new Size(Math.Max(host.MinimumSize.Width, Math.Min(host.Width, need.Width + chrome.Width)),
+                               Math.Max(host.MinimumSize.Height, need.Height + chrome.Height));
+            if (min != host.MinimumSize) host.MinimumSize = min;
+        }
+
+        // Deferred when the window exists: a refit from inside a layout pass would re-enter it.
+        void FitSoon()
+        {
+            if (host.IsHandleCreated && !host.IsDisposed) host.BeginInvoke((Action)Fit);
+            else Fit();
+        }
+
+        Fit();
+        host.Load += (_, _) => Fit();          // after Windows' DPI autoscale
+        host.Shown += (_, _) => FitSoon();     // after AlignLabels widens the label column
+        host.FontChanged += (_, _) => FitSoon();
+        host.DpiChanged += (_, _) => FitSoon(); // dragged to a monitor with another scale
+        return FitSoon;
+    }
+
+    private static void RelayoutInsideOut(Control c)
+    {
+        foreach (Control child in c.Controls)
+            if (child.Controls.Count > 0) RelayoutInsideOut(child);
+        c.PerformLayout(c, "Bounds");
+    }
+
     /// <summary>A docked, padded, single-column table that grows one row at a time.</summary>
     public static TableLayoutPanel SingleColumn()
     {

@@ -302,6 +302,7 @@ public sealed class BatchRunWindow : Form
             Math.Max(ClientSize.Width, root.PreferredSize.Width),
             root.PreferredSize.Height + _status.Height);
         MinimumSize = Size;
+        FormLayout.KeepFitted(this, root, _status); // grows with content restored later, DPI scaling and label alignment
 
         UpdateSelectionUi();
         SetStatus("Check the model sets and actions/script sets to include and a destination, then Run now or Save as schedule.");

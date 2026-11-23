@@ -1853,8 +1853,21 @@ internal static class Program
     {
         int problems = 0;
 
+        // Choosing a dropdown item can raise a real message box (Mirror Check warns before it
+        // targets a parameter). The forms here are off-screen; a message box is not — it centres on
+        // the user's screen, and the gate raised one per choice. Every dialog box on this thread is
+        // moved off-screen as it appears and cancelled.
+        using var muffle = new DialogMuffler();
+
+        // THEMEPREVIEW_ONLY=<text> checks only the windows whose name contains it — for working on one
+        // dialog without waiting for all of them.
+        string? only = Environment.GetEnvironmentVariable("THEMEPREVIEW_ONLY");
         foreach ((string name, Func<Form> make) in Windows())
-            problems += InspectWindow(name, make);
+            if (string.IsNullOrEmpty(only) || name.IndexOf(only, StringComparison.OrdinalIgnoreCase) >= 0)
+                problems += InspectWindow(name, make);
+
+        if (muffle.Cancelled > 0)
+            Console.WriteLine($"note {muffle.Cancelled} message box(es) raised by dropdown choices were cancelled unseen.");
 
         if (inject)
         {
@@ -1886,44 +1899,230 @@ internal static class Program
             Console.WriteLine($"FAILED: {problems} layout problem(s) across the shared dialogs.");
             return 1;
         }
-        Console.WriteLine("Layout gate passed: every window readable at its natural and minimum size.");
+        Console.WriteLine("Layout gate passed: every window readable at 100 %, at its natural and minimum " +
+                          "size, after every dropdown choice. Any 'warn' lines above are simulated-scale " +
+                          "findings to confirm in Revit.");
         return 0;
     }
 
-    /// <summary>Builds one window, inspects it at both sizes, and returns the problem count.</summary>
+    /// <summary>
+    /// The display scales every window is opened at: 100 %, 125 %, 150 % and 200 %. Windows'
+    /// scaling enlarges the font and AutoScaleMode.Font grows the layout with it, so raising the
+    /// form's font reproduces it in this process.
+    ///
+    /// <para><b>Why more than 100 %.</b> 2.1.0.8's Export NWC looked right here and broke in Revit:
+    /// the model-set list was drawn over the "Export CSV log to:" row. Every check this gate made
+    /// passed, because it only ever looked at the dialog as constructed, at one scale.</para>
+    /// </summary>
+    private static readonly float[] Scales = { 1f, 1.25f, 1.5f, 2f };
+
+    /// <summary>
+    /// Builds one window at every <see cref="Scales">scale</see>, and inspects it at its natural and
+    /// minimum size — and again after every choice of every dropdown, at both sizes. Returns the
+    /// problem count.
+    ///
+    /// <para><b>Why every dropdown choice.</b> A choice can change what the dialog shows — Export
+    /// NWC's Coordinates note grows to four lines for "Project Base Point at 0,0,0" — and a dialog
+    /// that sized itself for the first choice then overflows. That is the 2.1.0.8 failure: a saved
+    /// set restored that choice after the dialog had measured itself.</para>
+    /// </summary>
     private static int InspectWindow(string name, Func<Form> make, bool quiet = false)
     {
         int problems = 0;
+        var scaledIssues = new List<string>();
+        // The injected self-tests are built to fail at 100 %; scaling them proves nothing more.
+        float[] scales = quiet ? new[] { 1f } : Scales;
+        foreach (float scale in scales)
+        {
+            string at = scale == 1f ? "" : $" {scale * 100:0}%";
+            // Above 100 % the scale is SIMULATED (a larger font at 96 DPI), and it is not exact:
+            // checked against Revit at a real 125 % (2026-11-24), it reported a combo 2-5 px out of
+            // its row that the real dialog does not have. So it warns, and the real check is
+            // opening the dialog in Revit (tools\ThemePreview\real-open-check.runcode, through the AI
+            // Bridge). 100 % is exact, and fails the gate.
+            if (scale != 1f)
+            {
+                int found = ScaledPass(name, make, scale);
+                if (found > 0) scaledIssues.Add($"{scale * 100:0}% {found}");
+                continue;
+            }
+            try
+            {
+                // Built WITH the larger font, so it measures itself at that size — as a dialog does
+                // on a scaled screen. Enlarging the font of a finished dialog instead tests a resize
+                // no user ever sees, and flags windows that are fine.
+                KhBatchRunner.UI.Theme.PreviewScale = scale;
+                using Form form = make();
+                KhBatchRunner.UI.Theme.PreviewScale = 1f;
+                form.StartPosition = FormStartPosition.Manual;
+                form.Location = new Point(-5000, -5000);   // off-screen — no visible flicker
+                form.ShowInTaskbar = false;
+                form.Show();
+                SettleLayout(form);
+
+                problems += InspectBothSizes(form, name, "natural" + at, quiet);
+
+                foreach (ComboBox combo in ChoiceCombos(form))
+                {
+                    int original = combo.SelectedIndex;
+                    for (int i = 0; i < combo.Items.Count; i++)
+                    {
+                        if (i == original) continue;
+                        combo.SelectedIndex = i;
+                        SettleLayout(form);
+                        problems += InspectBothSizes(form, name,
+                            $"natural{at}, {NameOf(combo)} = \"{combo.Items[i]}\"", quiet);
+                    }
+                    if (original >= 0 && original < combo.Items.Count) combo.SelectedIndex = original;
+                    SettleLayout(form);
+                }
+
+                form.Close();
+            }
+            catch (Exception ex)
+            {
+                KhBatchRunner.UI.Theme.PreviewScale = 1f;
+                problems++;
+                Console.WriteLine($"FAILED {name}{at}: {ex.Message}");
+                break;   // the same exception at every scale says nothing new
+            }
+        }
+        if (problems == 0 && !quiet) Console.WriteLine("ok   " + name + " (100 %, natural and minimum, every dropdown choice)");
+        if (scaledIssues.Count > 0)
+            Console.WriteLine($"warn {name}: simulated scale finds {string.Join(", ", scaledIssues)} issue(s) — " +
+                              "open it in Revit at that scale to confirm (real-open-check.runcode)");
+        return problems;
+    }
+
+    /// <summary>One simulated-scale pass, quiet: the window built at <paramref name="scale"/> and
+    /// inspected at its natural and minimum size. Returns the issue count.</summary>
+    private static int ScaledPass(string name, Func<Form> make, float scale)
+    {
         try
         {
+            KhBatchRunner.UI.Theme.PreviewScale = scale;
             using Form form = make();
+            KhBatchRunner.UI.Theme.PreviewScale = 1f;
             form.StartPosition = FormStartPosition.Manual;
-            form.Location = new Point(-5000, -5000);   // off-screen — no visible flicker
+            form.Location = new Point(-5000, -5000);
             form.ShowInTaskbar = false;
             form.Show();
-            Settle(form);
-
-            problems += Inspect(form, name, "natural", quiet);
-
-            // Shrink to the size the user is allowed to drag it to. A dialog that only works at the
-            // size it happens to open at is a dialog waiting to break on someone else's screen.
-            Size min = form.MinimumSize;
-            if (min.Width > 0 && min.Height > 0 && min != form.Size)
-            {
-                form.Size = min;
-                Settle(form);
-                problems += Inspect(form, name, "minimum", quiet);
-            }
-
+            SettleLayout(form);
+            int found = InspectBothSizes(form, name, "natural", quiet: true);
             form.Close();
-            if (problems == 0 && !quiet) Console.WriteLine("ok   " + name);
+            return found;
         }
-        catch (Exception ex)
+        catch
         {
-            problems++;
-            Console.WriteLine($"FAILED {name}: {ex.Message}");
+            KhBatchRunner.UI.Theme.PreviewScale = 1f;
+            return 0;   // a window that cannot be built at all already failed at 100 %
+        }
+    }
+
+    /// <summary>Inspects the form as it stands, then at the minimum size the user can drag it to,
+    /// then puts the size back.</summary>
+    private static int InspectBothSizes(Form form, string name, string at, bool quiet)
+    {
+        int problems = Inspect(form, name, at, quiet);
+
+        // Shrink to the size the user is allowed to drag it to. A dialog that only works at the
+        // size it happens to open at is a dialog waiting to break on someone else's screen.
+        Size before = form.Size;
+        Size min = form.MinimumSize;
+        if (min.Width > 0 && min.Height > 0 && min != form.Size)
+        {
+            form.Size = min;
+            SettleLayout(form);
+            problems += Inspect(form, name, at.Replace("natural", "minimum"), quiet);
+            form.Size = before;
+            SettleLayout(form);
         }
         return problems;
+    }
+
+    /// <summary>
+    /// The fixed-choice dropdowns whose choice could change the layout: drop-down lists with a
+    /// handful of items. Not editable combos (a saved-set name box), and not model-set pickers,
+    /// whose choice only changes what a run covers.
+    /// </summary>
+    private static IEnumerable<ComboBox> ChoiceCombos(Control root) =>
+        Descendants(root).OfType<ComboBox>()
+            .Where(c => c.Visible && c.Enabled && c.DropDownStyle == ComboBoxStyle.DropDownList &&
+                        c.Items.Count is > 1 and <= 12 && SetItemsOf(c).Count == 0)
+            .ToList();
+
+    /// <summary>
+    /// Keeps message boxes from reaching the screen while the layout gate runs: a thread CBT hook
+    /// moves every dialog-class window (<c>#32770</c>, which is what MessageBox creates) off-screen as
+    /// it is created and again as it activates, then posts it IDCANCEL. In-process and this thread
+    /// only — no other program's windows are touched.
+    /// </summary>
+    private sealed class DialogMuffler : IDisposable
+    {
+        private const int WH_CBT = 5, HCBT_CREATEWND = 3, HCBT_ACTIVATE = 5;
+        private const uint WM_COMMAND = 0x0111, SWP_NOSIZE = 0x1, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10;
+        private delegate IntPtr HookProc(int code, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")] private static extern IntPtr SetWindowsHookEx(int id, HookProc proc, IntPtr mod, uint thread);
+        [DllImport("user32.dll")] private static extern bool UnhookWindowsHookEx(IntPtr hook);
+        [DllImport("user32.dll")] private static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr w, IntPtr l);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
+        [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+        [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+        [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+
+        private readonly HookProc _proc;   // held, or the GC collects the delegate under the hook
+        private readonly IntPtr _hook;
+        private readonly HashSet<IntPtr> _cancelled = new();
+
+        public int Cancelled => _cancelled.Count;
+
+        public DialogMuffler()
+        {
+            _proc = Proc;
+            _hook = SetWindowsHookEx(WH_CBT, _proc, IntPtr.Zero, GetCurrentThreadId());
+        }
+
+        private IntPtr Proc(int code, IntPtr wParam, IntPtr lParam)
+        {
+            if ((code == HCBT_CREATEWND || code == HCBT_ACTIVATE) && IsDialog(wParam))
+            {
+                SetWindowPos(wParam, IntPtr.Zero, -32000, -32000, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                if (code == HCBT_ACTIVATE && _cancelled.Add(wParam))
+                    PostMessage(wParam, WM_COMMAND, (IntPtr)2 /* IDCANCEL */, IntPtr.Zero);
+            }
+            return CallNextHookEx(_hook, code, wParam, lParam);
+        }
+
+        private static bool IsDialog(IntPtr h)
+        {
+            var sb = new System.Text.StringBuilder(32);
+            GetClassName(h, sb, sb.Capacity);
+            return sb.ToString() == "#32770";
+        }
+
+        public void Dispose()
+        {
+            if (_hook != IntPtr.Zero) UnhookWindowsHookEx(_hook);
+        }
+    }
+
+    /// <summary>
+    /// The layout gate's settle: enough to run layout and the posted refits
+    /// (<c>FormLayout.KeepFitted</c> defers through BeginInvoke), without the screenshot path's
+    /// paint wait. The gate settles thousands of times — every scale, size and dropdown choice — and
+    /// at 300 ms each it took over ten minutes.
+    /// </summary>
+    private static void SettleLayout(Form form)
+    {
+        form.PerformLayout();
+        for (int i = 0; i < 4; i++)
+        {
+            Application.DoEvents();
+            Thread.Sleep(2);
+        }
+        form.PerformLayout();
+        Application.DoEvents();
     }
 
     /// <summary>Pump the message loop until the layout has actually settled — same recipe as the
@@ -2014,7 +2213,8 @@ internal static class Program
             if (c.Right > inside.Right + 1 || c.Bottom > inside.Bottom + 1 ||
                 c.Left < inside.Left - 1 || c.Top < inside.Top - 1)
                 yield return $"sticks out of its {p.GetType().Name} " +
-                             $"({c.Bounds} vs {inside})";
+                             $"({c.Bounds} vs {inside}; preferred {c.PreferredSize.Height}px, " +
+                             $"minimum {c.MinimumSize.Height}px, margin {c.Margin.Vertical}px)";
         }
 
         // 3. A docked list/grid squeezed to uselessness — the Schedule Run symptom.
@@ -2045,8 +2245,11 @@ internal static class Program
     /// </summary>
     private static IEnumerable<string> ButtonRowProblems(Control root)
     {
+        // A button scrolled partly out of a scrolling panel is clipped content, not a button on the
+        // wrong line: the Formula dialog scrolls at its minimum size by design, and its Insert button
+        // then slides under the OK/Cancel strip.
         List<(Button B, Rectangle R)> buttons = Descendants(root).OfType<Button>()
-            .Where(b => b.Visible && b.Width > 0 && b.Height > 0 && b.IsHandleCreated)
+            .Where(b => b.Visible && b.Width > 0 && b.Height > 0 && b.IsHandleCreated && !ClippedByScroll(b))
             .Select(b => (b, b.RectangleToScreen(b.ClientRectangle)))
             .ToList();
         for (int i = 0; i < buttons.Count; i++)
@@ -2060,6 +2263,17 @@ internal static class Program
                                  $"{Describe(buttons[j].B)} ({b.Height}px at y {b.Top}) share a line " +
                                  "but not a height/top";
             }
+    }
+
+    /// <summary>True when a scrolling ancestor shows less than the whole of <paramref name="c"/>.</summary>
+    private static bool ClippedByScroll(Control c)
+    {
+        Rectangle r = c.RectangleToScreen(c.ClientRectangle);
+        for (Control? p = c.Parent; p != null; p = p.Parent)
+            if (p is ScrollableControl { AutoScroll: true } &&
+                !p.RectangleToScreen(p.ClientRectangle).Contains(r))
+                return true;
+        return false;
     }
 
     /// <summary>Every control under <paramref name="root"/>, depth-first.</summary>

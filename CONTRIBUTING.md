@@ -17,8 +17,21 @@ Thanks for helping. A few rules keep this add-in safe to run against real projec
    `tools/ThemePreview` (`Windows()`). A window missing from that list is not checked at all.
 3. **Test in Revit itself.** A headless pass doesn't prove the interactive path works. Say in the
    PR which Revit year you tested, and whether the model was local or in the cloud.
+4. **Open every dialog you touched, at every size and scale.** Run
+   `dotnet run --project tools\ThemePreview -- layout`. It opens every window at 100, 125, 150 and
+   200 % display scale, at its natural and its minimum size, and again after every dropdown choice,
+   and fails on clipped text, overlapping rows and controls outside their panel. It checks 100 %
+   exactly. 125-200 % are simulated and only warn, so then open the dialog in Revit itself:
+   `tools\ThemePreview\real-open-check.runcode` is a run_code body that does the same checks inside
+   Revit at the PC's real scale. 2.1.0.8's Export NWC passed a 100 % preview and still drew its
+   model-set list over the row below it in Revit at 125 %.
 
 ## Rules that bite
+
+- **A dialog fits itself through `FormLayout.KeepFitted`.** Measuring `root.PreferredSize` once
+  in the constructor is not enough: a restored saved set, a note that changes with a dropdown,
+  DPI scaling at Load and `AlignLabels` at Shown all grow the content later, and the layout table
+  does not scroll.
 
 - **An action's name is its schedule key.** Renaming an action breaks every saved schedule unless
   the old name is mapped in `ActionNames.Canonical`.

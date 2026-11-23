@@ -1,0 +1,90 @@
+// Real-open UI check — the body for the AI Bridge's run_code tool (KH-Tool tab › Setting › AI Bridge
+// and AI Code ON; a dev install turns both on at start). It opens each dialog INSIDE Revit, at the
+// PC's real display scale, off-screen, and checks it the way tools\ThemePreview's layout gate does:
+// at its natural and minimum size, after every choice of every drop-down list, for controls outside
+// their panel, truncated labels and overlapping rows. It saves a picture of each state and returns
+// a report. Nothing is written to any model.
+//
+// Why it exists: ThemePreview can only SIMULATE 125-200 % (a larger font at 96 DPI), and that is
+// not exact. 2.1.0.8's Export NWC passed the preview and, in Revit at 125 %, drew its model-set list
+// over the rows below it. This is the check that runs where the user's dialogs run.
+//
+// Edit WINDOWS and OUT_DIR below. Each window must have a public constructor taking either nothing
+// or one string (the active-model name). Do NOT list a window whose drop-down raises a message box
+// on change (Mirror Check warns before it targets a parameter): in Revit that box is real and lands
+// on the user's screen. ThemePreview's gate cancels those off-screen; this script cannot.
+
+string[] WINDOWS = { "KhBatchRunner.UI.ExportNwcWindow", "KhBatchRunner.UI.ExportIfcWindow" };
+string OUT_DIR = Path.Combine(Path.GetTempPath(), "kh-real-open-check");
+
+Directory.CreateDirectory(OUT_DIR);
+var asm = AppDomain.CurrentDomain.GetAssemblies().First(a => a.GetName().Name == "KhBatchRunner");
+var report = new List<string>();
+IEnumerable<System.Windows.Forms.Control> Desc(System.Windows.Forms.Control r) { foreach (System.Windows.Forms.Control c in r.Controls) { yield return c; foreach (var g in Desc(c)) yield return g; } }
+string D(System.Windows.Forms.Control c) { var t = (c.Text ?? "").Replace("\n", " "); return c.GetType().Name + " \"" + (t.Length > 30 ? t.Substring(0, 30) : t) + "\""; }
+void Settle(System.Windows.Forms.Form f) { f.PerformLayout(); for (int i = 0; i < 12; i++) { System.Windows.Forms.Application.DoEvents(); System.Threading.Thread.Sleep(15); } }
+int Inspect(System.Windows.Forms.Form f, string at)
+{
+    int n = 0;
+    foreach (System.Windows.Forms.Control c in Desc(f))
+    {
+        if (!c.Visible || c.Width <= 0) continue;
+        if (c.Parent != null && !(c.Parent is System.Windows.Forms.ScrollableControl sc && sc.AutoScroll))
+        {
+            var ins = c.Parent.ClientRectangle;
+            if (c.Right > ins.Right + 1 || c.Bottom > ins.Bottom + 1) { n++; report.Add("  " + at + ": " + D(c) + " sticks out " + c.Bounds + " vs " + ins); }
+        }
+        if (c.AutoSize && (c is System.Windows.Forms.Label || c is System.Windows.Forms.CheckBox) && c.MaximumSize.Width == 0 && c.GetPreferredSize(System.Drawing.Size.Empty).Width > c.Width + 1) { n++; report.Add("  " + at + ": " + D(c) + " truncated"); }
+    }
+    foreach (System.Windows.Forms.Control cont in new System.Windows.Forms.Control[] { f }.Concat(Desc(f)))
+    {
+        var kids = cont.Controls.Cast<System.Windows.Forms.Control>().Where(k => k.Visible && k.Width > 0 && k.Height > 0).ToList();
+        for (int i = 0; i < kids.Count; i++) for (int j = i + 1; j < kids.Count; j++)
+        { var a = kids[i].Bounds; a.Inflate(-1, -1); if (a.IntersectsWith(kids[j].Bounds)) { n++; report.Add("  " + at + ": " + D(kids[i]) + " OVERLAPS " + D(kids[j])); } }
+    }
+    return n;
+}
+int CheckBothSizes(System.Windows.Forms.Form f, string at, string picture)
+{
+    int a = Inspect(f, at + " natural");
+    using (var bmp = new System.Drawing.Bitmap(f.Width, f.Height)) { f.DrawToBitmap(bmp, new System.Drawing.Rectangle(System.Drawing.Point.Empty, f.Size)); bmp.Save(Path.Combine(OUT_DIR, picture + ".png")); }
+    var keep = f.Size; f.Size = f.MinimumSize; Settle(f);
+    int b = Inspect(f, at + " minimum"); f.Size = keep; Settle(f);
+    return a + b;
+}
+
+int total = 0;
+foreach (string typeName in WINDOWS)
+{
+    Type t = asm.GetType(typeName, true);
+    string shortName = t.Name;
+    object[] args = t.GetConstructor(new[] { typeof(string) }) != null ? new object[] { "Active Model" } : new object[0];
+    using (var f = (System.Windows.Forms.Form)Activator.CreateInstance(t, args))
+    {
+        f.StartPosition = System.Windows.Forms.FormStartPosition.Manual; f.Location = new System.Drawing.Point(-6000, -6000); f.ShowInTaskbar = false;
+        f.Show(); Settle(f);
+        float dpi; using (var g = f.CreateGraphics()) dpi = g.DpiX;
+        report.Add(shortName + ": " + (dpi / 96f * 100) + " % scale, size " + f.Size + ", minimum " + f.MinimumSize);
+        int found = CheckBothSizes(f, "as opened", shortName + "_opened");
+        var combos = Desc(f).OfType<System.Windows.Forms.ComboBox>()
+            .Where(c => c.Visible && c.Enabled && c.DropDownStyle == System.Windows.Forms.ComboBoxStyle.DropDownList && c.Items.Count > 1 && c.Items.Count <= 12).ToList();
+        int k = 0;
+        foreach (var combo in combos)
+        {
+            int original = combo.SelectedIndex;
+            for (int i = 0; i < combo.Items.Count; i++)
+            {
+                if (i == original) continue;
+                combo.SelectedIndex = i; Settle(f);
+                found += CheckBothSizes(f, "'" + combo.Items[i] + "'", shortName + "_choice" + (k++));
+            }
+            combo.SelectedIndex = original; Settle(f);
+        }
+        report.Add("  " + found + " problem(s)");
+        total += found;
+        f.Close();
+    }
+}
+report.Add(total == 0 ? "PASSED — every window clean at this scale." : "FAILED — " + total + " problem(s); pictures in " + OUT_DIR);
+File.WriteAllLines(Path.Combine(OUT_DIR, "report.txt"), report);
+return string.Join("\n", report);

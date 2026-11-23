@@ -352,6 +352,7 @@ public sealed class ScheduleRunWindow : Form
             root.PreferredSize.Height + _status.Height);
 
         MinimumSize = Size;
+        FormLayout.KeepFitted(this, root, _status); // grows with content restored later, DPI scaling and label alignment
         open.Mark("theme");
         _jobs.RefreshGrid();
         open.Mark("RefreshGrid");

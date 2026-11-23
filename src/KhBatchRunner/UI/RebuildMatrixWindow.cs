@@ -126,6 +126,7 @@ public sealed class RebuildMatrixWindow : Form
             Math.Max(ClientSize.Width, root.PreferredSize.Width),
             root.PreferredSize.Height + _status.Height);
         MinimumSize = Size;
+        FormLayout.KeepFitted(this, root, _status); // grows with content restored later, DPI scaling and label alignment
 
         ShowSourceKind();
         _kindCombo.SelectedIndexChanged += (_, _) => ShowSourceKind();

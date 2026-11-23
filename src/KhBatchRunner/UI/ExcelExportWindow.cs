@@ -114,6 +114,7 @@ public sealed class ExcelExportWindow : Form
             Math.Max(ClientSize.Width, root.PreferredSize.Width),
             Math.Max(ClientSize.Height, root.PreferredSize.Height));
         MinimumSize = Size; // resizable, but never smaller than the fitted content
+        FormLayout.KeepFitted(this, root); // grows with content restored later, DPI scaling and label alignment
     }
 
     // Repopulate the visible list from the current filter, restoring each row's checkbox from the

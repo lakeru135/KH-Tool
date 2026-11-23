@@ -185,6 +185,7 @@ public sealed class ScheduleInteropWindow : Form
             Math.Max(ClientSize.Width, root.PreferredSize.Width),
             root.PreferredSize.Height + _status.Height);
         MinimumSize = Size;
+        FormLayout.KeepFitted(this, root, _status); // grows with content restored later, DPI scaling and label alignment
         _jobs.RefreshGrid();
 
         // Populate saved checksets and restore the last-used one + destination folder.

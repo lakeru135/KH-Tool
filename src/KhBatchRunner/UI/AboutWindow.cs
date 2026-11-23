@@ -101,6 +101,7 @@ public sealed class AboutWindow : Form
         ClientSize = new Size(
             Math.Max(ClientSize.Width, root.PreferredSize.Width), root.PreferredSize.Height);
         MinimumSize = Size;
+        FormLayout.KeepFitted(this, root); // grows with content restored later, DPI scaling and label alignment
         desc.ForeColor = Theme.Dim(desc);
     }
 

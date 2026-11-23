@@ -162,6 +162,9 @@ public sealed class MirrorCheckWindow : Form
         ReadModel(first: true, null);
         ClientSize = new Size(Math.Max(ClientSize.Width, root.PreferredSize.Width), ClientSize.Height);
         Fit();
+        // Once, here — not in Fit(), which runs on every parameter change. Grows the window with DPI
+        // scaling and label alignment; Fit() still handles the setup row coming and going.
+        FormLayout.KeepFitted(this, _root);
     }
 
     /// <summary>

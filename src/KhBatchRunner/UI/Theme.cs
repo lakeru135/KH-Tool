@@ -159,12 +159,19 @@ internal static class Theme
         combo.DrawItem += ComboDrawItem;
     }
 
+    /// <summary>
+    /// Test hook for tools\ThemePreview's layout gate: 1.25, 1.5 or 2 builds every dialog with its
+    /// font that much larger, BEFORE the dialog measures itself — which is what Windows display
+    /// scaling does to a dialog in Revit. Always 1 in Revit; nothing in the add-in sets it.
+    /// </summary>
+    internal static float PreviewScale { get; set; } = 1f;
+
     public static void Apply(Form form)
     {
         // Pin the font explicitly: .NET Framework's WinForms default is Microsoft Sans Serif
         // 8.25pt, .NET 8's is Segoe UI 9pt — without this the Revit 2024 (net48) build renders
         // every dialog smaller/cramped. No-op on net8, where Segoe UI 9pt is already the default.
-        form.Font = new Font("Segoe UI", 9f);
+        form.Font = new Font("Segoe UI", 9f * PreviewScale);
 
         bool dark = IsDark();
         Palette p = dark ? ForDark() : ForLight();

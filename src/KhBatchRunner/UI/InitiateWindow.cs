@@ -161,6 +161,7 @@ public sealed class InitiateWindow : Form
         ClientSize = new System.Drawing.Size(
             Math.Max(ClientSize.Width, root.PreferredSize.Width), root.PreferredSize.Height);
         MinimumSize = Size; // resizable, but never smaller than the fitted content (all controls shown)
+        FormLayout.KeepFitted(this, root); // grows with content restored later, DPI scaling and label alignment
 
         // Populate the saved sets and restore the last committed inputs (which also selects
         // the matching set if the last commit came from one).
