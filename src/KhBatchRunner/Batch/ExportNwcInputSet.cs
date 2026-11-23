@@ -89,6 +89,18 @@ public sealed class ExportNwcInputSet
     /// means shared coordinates, which is what a federated model almost always wants.</summary>
     public bool UseInternalCoordinates { get; set; }
 
+    /// <summary>
+    /// The coordinate choice since 2.1.0.8. Null in a set saved by an older build, which then keeps
+    /// meaning what its <see cref="UseInternalCoordinates"/> box said — read it through
+    /// <see cref="EffectiveCoordinates"/>, never directly.
+    /// </summary>
+    public ExportCoordinates? Coordinates { get; set; }
+
+    /// <summary>What the export actually uses: <see cref="Coordinates"/>, or the old checkbox.</summary>
+    [JsonIgnore]
+    public ExportCoordinates EffectiveCoordinates =>
+        Coordinates ?? (UseInternalCoordinates ? ExportCoordinates.Internal : ExportCoordinates.Shared);
+
     public bool ConvertLinkedCADFormats { get; set; }
     public bool ConvertLights { get; set; }
 
@@ -184,6 +196,7 @@ public sealed class ExportNwcInputSet
         ExportElementIds = ExportElementIds,
         ExportUrls = ExportUrls,
         UseInternalCoordinates = UseInternalCoordinates,
+        Coordinates = Coordinates,
         ConvertLinkedCADFormats = ConvertLinkedCADFormats,
         ConvertLights = ConvertLights,
         FacetingFactor = FacetingFactor,

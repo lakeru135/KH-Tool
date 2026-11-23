@@ -154,6 +154,7 @@
         <li><a href="#first">Run something safe</a></li>
         <li><a href="#same">What every tool shares</a></li>
         <li><a href="#buttons">What each button does</a></li>
+        <li><a href="#coordinates">Export coordinates</a></li>
         <li><a href="#schedule">Run it overnight</a></li>
         <li><a href="#results">Where results land</a></li>
         <li><a href="#move">Move it to a new PC</a></li>
@@ -347,8 +348,8 @@
                 <tr><td class="name">Correct Workset</td><td><span class="flag write">Writes</span></td><td>Moves chosen categories and links onto their proper worksets. Check mode only reports; Fix mode applies and syncs.</td></tr>
                 <tr class="group"><td colspan="3">Batch Run panel and NWD Helper</td></tr>
                 <tr><td class="name">Batch Interop</td><td><span class="flag read">Reads</span></td><td>Runs an Autodesk Model Checker checkset over a set. Needs BIM Interoperability Tools installed.</td></tr>
-                <tr><td class="name">Export NWC</td><td><span class="flag read">Reads</span></td><td>Navisworks files, from the whole model or from 3D views by name. Needs the exporter that installs with Navisworks.</td></tr>
-                <tr><td class="name">Export IFC + Data</td><td><span class="flag read">Reads</span></td><td>One IFC per model plus <span class="path">elements.csv</span> and <span class="path">rooms.csv</span> in a dated run folder, then converted for a web viewer.</td></tr>
+                <tr><td class="name">Export NWC</td><td><span class="flag read">Reads</span></td><td>Navisworks files, from the whole model or from 3D views by name, in shared, internal or <a href="#coordinates">Project Base Point</a> coordinates. Needs the exporter that installs with Navisworks.</td></tr>
+                <tr><td class="name">Export IFC + Data</td><td><span class="flag read">Reads</span></td><td>One IFC per model plus <span class="path">elements.csv</span> and <span class="path">rooms.csv</span> in a dated run folder, then converted for a web viewer. Same <a href="#coordinates">coordinate choices</a> as Export NWC.</td></tr>
                 <tr><td class="name">Create rfa from NWD</td><td><span class="flag write">Writes</span></td><td>Builds a Revit family from a KH-NWD Tool export. Not a batch tool.</td></tr>
                 <tr class="group"><td colspan="3">Forma Batch Action</td></tr>
                 <tr><td class="name">Get File Log</td><td><span class="flag read">Reads</span></td><td>Version history for a set of Forma folders, one CSV per folder. Opens no model.</td></tr>
@@ -371,8 +372,80 @@
         </div>
       </section>
 
+      <section id="coordinates">
+        <div class="sec-head"><div class="sec-num">07</div><h2 class="sec-title">Coordinates in Export NWC and Export IFC + Data</h2></div>
+        <div class="sec-body">
+          <p>Both export dialogs have a <span class="ui">Coordinates</span> dropdown. It decides where the
+          model lands in the exported file. Pick the one your federated (coordination) model uses. If the
+          files use different choices, they will not line up.</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Choice</th><th>What 0,0,0 is in the file</th><th>Use it when</th></tr></thead>
+              <tbody>
+                <tr><td class="name">Shared coordinates</td><td>The active site's shared (survey) origin, with its true-north rotation.</td><td>The federation uses survey coordinates. This is most projects, and it is the default.</td></tr>
+                <tr><td class="name">Internal origin</td><td>Revit's internal origin, with no rotation.</td><td>Every model was built around Revit's origin and the federation expects that.</td></tr>
+                <tr><td class="name">Project Base Point at 0,0,0</td><td>The Project Base Point (PBP). Project north points up, and Z 0 is the PBP's elevation.</td><td>The federation uses a local grid, such as a plant grid, whose origin is the PBP.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>What "Project Base Point at 0,0,0" does to the model</h3>
+          <p><strong>Export NWC.</strong> The Navisworks exporter only knows <em>Internal</em> and
+          <em>Shared</em>, and Shared always means the active site. So for one export, KH-Tool makes a
+          site that puts the PBP on 0,0,0:</p>
+          <ol class="steps">
+            <li><div><p class="step-lead">Make a temporary site.</p>
+              <p>It copies your active site as <span class="path">KH_TEMP_PBP_ORIGIN</span>. In the copy, the PBP
+              is at shared 0,0,0 and the angle is 0. It then makes the copy the active site. Your own site is
+              not edited.</p></div></li>
+            <li><div><p class="step-lead">Check it.</p>
+              <p>The PBP must now read 0,0,0. If it does not, nothing is exported and the row says why.</p></div></li>
+            <li><div><p class="step-lead">Export with shared coordinates.</p>
+              <p>Shared now means "the PBP is 0,0,0", so that is what the file gets.</p></div></li>
+            <li><div><p class="step-lead">Put it back.</p>
+              <p>Your own site is made active again and the temporary one is deleted. This happens even if
+              the export fails.</p></div></li>
+          </ol>
+          <p>If the PBP is already on Revit's internal origin, none of this happens. The file is exported
+          with internal coordinates, which is the same frame, and the model is not touched.</p>
+          <p><strong>Export IFC + Data.</strong> Revit's IFC exporter has its own "Project base point"
+          setting, and KH-Tool uses it. The model is not changed. Revit still writes the survey offset into
+          the IFC's base point, so Navisworks would move the model back to survey coordinates. KH-Tool
+          therefore sets that one point to 0,0,0 in the file after the export. The row shows the value it
+          replaced.</p>
+
+          <div class="note care">
+            <span class="tag">What it leaves behind</span>
+            <p>The geometry and coordinates are exactly as before. On <span class="ui">Run on active model</span>,
+            the NWC adds two entries to Revit's undo list ("temporary PBP site" and "restore site"). On a
+            workshared model, those steps borrow a few elements (project information, the sites, links
+            placed by shared site). KH-Tool gives back what it borrowed and keeps what you already owned,
+            and the row says what happened. A batch run closes each model without saving, so nothing
+            reaches the central model.</p>
+          </div>
+          <div class="note stop">
+            <span class="tag">Every model's PBP must be at the same real-world point</span>
+            <p>Each model is exported with its own PBP at 0,0,0. If one discipline placed its PBP
+            somewhere else, its file comes out shifted, with no error. KH-Tool compares each model's PBP
+            with the first model of the run and warns in the <span class="ui">Coordinates</span> column when
+            they differ by more than 5 mm or 0.01°. That check uses shared coordinates, so it only means
+            something when the models share coordinates. Check the PBPs before you rely on the files: <span class="ui">Get
+            Site Location &amp; PBP</span> lists them for a whole set.</p>
+          </div>
+          <ul class="plain">
+            <li><strong>Read the Coordinates column.</strong> Every exported file's row says which frame it
+            used, where the PBP was (internal and shared), and any warning.</li>
+            <li><strong>Old saved option sets still work.</strong> A set saved before this option opens as
+            Shared or Internal, exactly as its old checkbox said.</li>
+            <li><strong>Test once after a Revit upgrade.</strong> The IFC fix reads the text Revit's IFC exporter
+            writes. If a new version writes it differently, that IFC fails with a clear message rather than
+            landing in the wrong place.</li>
+          </ul>
+        </div>
+      </section>
+
       <section id="schedule">
-        <div class="sec-head"><div class="sec-num">07</div><h2 class="sec-title">Run it overnight</h2></div>
+        <div class="sec-head"><div class="sec-num">08</div><h2 class="sec-title">Run it overnight</h2></div>
         <div class="sec-body">
           <p>Open <span class="trail">Schedule <span class="sep">›</span> Schedule Run</span>. The bottom half is
           the Batch Run form. The top half adds a name, a recurrence (once, daily, weekly), a date and a
@@ -392,7 +465,7 @@
       </section>
 
       <section id="results">
-        <div class="sec-head"><div class="sec-num">08</div><h2 class="sec-title">Where results land</h2></div>
+        <div class="sec-head"><div class="sec-num">09</div><h2 class="sec-title">Where results land</h2></div>
         <div class="sec-body">
           <h3>The run log: did it work?</h3>
           <p><span class="path">…\Log\20261113_2100_SITE1_Get Phase &amp; Workset.csv</span></p>
@@ -410,7 +483,7 @@
       </section>
 
       <section id="move">
-        <div class="sec-head"><div class="sec-num">09</div><h2 class="sec-title">Move it to a new PC</h2></div>
+        <div class="sec-head"><div class="sec-num">10</div><h2 class="sec-title">Move it to a new PC</h2></div>
         <div class="sec-body">
           <p><span class="trail">Setting <span class="sep">›</span> Import / Export Settings</span> writes one
           <span class="ui">.zip</span> with your model sets, script sets, folder sets and every tool's
@@ -424,7 +497,7 @@
       </section>
 
       <section id="trouble">
-        <div class="sec-head"><div class="sec-num">10</div><h2 class="sec-title">When it goes wrong</h2></div>
+        <div class="sec-head"><div class="sec-num">11</div><h2 class="sec-title">When it goes wrong</h2></div>
         <div class="sec-body">
           <h3>Half my sets are greyed out</h3>
           <p>Revit is signed in as an account that cannot open those projects. Check the account at the

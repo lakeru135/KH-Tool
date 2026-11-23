@@ -38,7 +38,7 @@ internal static class Product
 #endif
 
     // One version line for every edition: the public repository starts at 2.0.0.
-    public const string Version = "2.1.0.7";
+    public const string Version = "2.1.0.8";
     public const string Publisher = "Kanghun BIM";
 
     /// <summary>
@@ -118,6 +118,8 @@ internal static class Product
     /// <summary>Short "what's new" list shown on the About dialog. Keep the newest at the top.</summary>
 #if EDITION_DRW
     public const string Changelog =
+        "DRW Helper (2.1.0.8) — review build:\n" +
+        "• Version kept in step with KH-Tool 2.1.0.8; the DRW tools are unchanged.\n\n" +
         "DRW Helper (2.1.0.7) — review build:\n" +
         "• Version kept in step with KH-Tool 2.1.0.7; the DRW tools are unchanged.\n\n" +
         "DRW Helper (2.1.0.6) — review build:\n" +
@@ -140,6 +142,14 @@ internal static class Product
         "• Setting: Model Set, Batch Run, Sync View.";
 #else
     public const string Changelog =
+        "KH-Tool (2.1.0.8) — review build:\n" +
+        "• Export NWC and Export IFC + Data: a Coordinates dropdown replaces the coordinates " +
+        "checkbox, with a third choice, \"Project Base Point at 0,0,0\" (project north up, Z 0 = PBP " +
+        "elevation), for federations drawn on a local grid. NWC goes through a temporary site that is " +
+        "deleted afterwards; IFC uses Revit's Project-base-point setting and sets the survey offset it " +
+        "still writes to 0. A new Coordinates column says what each file used and warns when a " +
+        "model's PBP differs from the run's first model. Old saved sets open unchanged. See the " +
+        "handbook, \"Coordinates in Export NWC and Export IFC + Data\".\n\n" +
         "KH-Tool (2.1.0.7) — review build:\n" +
         "• Export IFC + Data: a cloud model's Forma ids (hub, project, folder, item) go into the " +
         "export index, so the BIM report can open the model in Forma.\n\n" +

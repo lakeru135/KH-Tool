@@ -18,7 +18,9 @@ public sealed class ExportIfcWindow : Form
     private readonly TextBox _outputBox;
     private readonly TextBox _viewContainsBox;
     private readonly ComboBox _schemaCombo;
-    private readonly CheckBox _sharedCoordinates;
+    // Was the "Shared coordinates" box until 2.1.0.8, when the third choice — Project Base Point at
+    // 0,0,0 — made it a dropdown.
+    private readonly CoordinatesPicker _coordinates;
     private readonly CheckBox _commonPsets;
     private readonly CheckBox _revitPsets;
     private readonly CheckBox _baseQuantities;
@@ -99,7 +101,7 @@ public sealed class ExportIfcWindow : Form
         _schemaCombo.Items.Add(new NamedItem(IfcSchemaChoice.Ifc4DesignTransferView.ToString(), "IFC4 Design Transfer View"));
         _schemaCombo.SelectedIndex = 0;
 
-        _sharedCoordinates = Chk("Shared coordinates", true);
+        _coordinates = new CoordinatesPicker(this, isNwc: false);
         _commonPsets = Chk("IFC common property sets", true);
         _revitPsets = Chk("Revit property sets");
         _baseQuantities = Chk("Base quantities");
@@ -117,7 +119,7 @@ public sealed class ExportIfcWindow : Form
         for (int i = 0; i < 4; i++) grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         foreach (Control c in new Control[]
                  {
-                     _sharedCoordinates, _commonPsets, _revitPsets, _baseQuantities,
+                     _commonPsets, _revitPsets, _baseQuantities,
                      _elementsCsv, _roomsCsv, _materialsCsv, _convertToFrag,
                  })
             grid.Controls.Add(c);
@@ -187,6 +189,8 @@ public sealed class ExportIfcWindow : Form
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Output folder:", _outputBox, browse));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("3D view title contains:", viewRow));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("IFC version:", _schemaCombo));
+        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Coordinates:", _coordinates.Combo));
+        FormLayout.AddAutoRow(root, _coordinates.Note);
         FormLayout.AddAutoRow(root, grid);
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Extra parameters (comma separated):", _extraParamsBox));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Keep runs for:", keepRow));
@@ -225,6 +229,11 @@ public sealed class ExportIfcWindow : Form
         // With no saved model sets, exporting the open model is the only thing this dialog can do.
         if (_activeModelCheck != null && _modelSetsList.Items.Count == 0)
             _activeModelCheck.Checked = true;
+
+        // AFTER the restore, and kept fitted from then on — see ExportNwcWindow and
+        // FormLayout.KeepFitted.
+        Action refit = FormLayout.KeepFitted(this, root);
+        _coordinates.NoteChanged += refit;
     }
 
     /// <summary>Fills every control from the given inputs. <paramref name="loaded"/> marks it as
@@ -239,7 +248,7 @@ public sealed class ExportIfcWindow : Form
         _viewContainsBox.Text = s.ViewTitleContains;
         for (int i = 0; i < _schemaCombo.Items.Count; i++)
             if (((NamedItem)_schemaCombo.Items[i]).Value == s.Schema.ToString()) _schemaCombo.SelectedIndex = i;
-        _sharedCoordinates.Checked = s.UseSharedCoordinates;
+        _coordinates.Value = s.EffectiveCoordinates;
         _commonPsets.Checked = s.ExportCommonPropertySets;
         _revitPsets.Checked = s.ExportRevitPropertySets;
         _baseQuantities.Checked = s.ExportBaseQuantities;
@@ -267,7 +276,10 @@ public sealed class ExportIfcWindow : Form
             OutputFolder = _outputBox.Text.Trim(),
             ViewTitleContains = _viewContainsBox.Text.Trim(),
             Schema = schema,
-            UseSharedCoordinates = _sharedCoordinates.Checked,
+            // Both: the dropdown for this build, the old box for an older build reading the same
+            // set (a PBP set reads there as shared, the nearest thing it knows).
+            Coordinates = _coordinates.Value,
+            UseSharedCoordinates = _coordinates.Value != ExportCoordinates.Internal,
             ExportCommonPropertySets = _commonPsets.Checked,
             ExportRevitPropertySets = _revitPsets.Checked,
             ExportBaseQuantities = _baseQuantities.Checked,

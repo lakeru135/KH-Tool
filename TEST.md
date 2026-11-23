@@ -40,7 +40,10 @@ projects.
 .\install\Install-Dev.ps1 -RevitVersion 2026 -RestoreInstalled
 ```
 Copies the build into `%AppData%\Autodesk\Revit\Addins\<year>\` (DRW Helper into its own
-`DrwHelper\` subfolder). If the script stops on "KhMcp.exe is being used by another process", an
+`DrwHelper\` subfolder). It also writes `kh-dev-autostart.flag` beside the dll, so a dev install
+starts Revit with **AI Bridge and AI Code ON** (an AI session can test it with no clicks after a
+restart). No installer ships the flag: released builds keep both off at every start.
+`-RestoreInstalled` removes it. If the script stops on "KhMcp.exe is being used by another process", an
 AI client is running the kh-tool MCP proxy: end that session first. `KhMcp.exe` is not loaded by
 Revit, so the add-in itself is unaffected.
 
@@ -195,6 +198,7 @@ Revit has no API to create design options; make that set by hand once in the see
 | Forma Batch Action | Initiate to Forma★, Cut Model, Internal Relink | ✔ | ✔ | source |
 | | Get File Log, Get Data Extract, Check Sheet Publish (REST only) | folder set | | |
 | NWD Helper | Export NWC (needs the Navisworks exporter; else SKIPPED), Export IFC + Data (+ `.frag`, `latest\`), Create rfa from NWD | ✔ | ✔ | ✔ |
+| | Export NWC and Export IFC + Data with Coordinates = Project Base Point at 0,0,0 (see "Coordinates" below) | ✔ | ✔ | ✔ |
 | Batch / Schedule Run★ | mixed sets + ad-hoc models, action → script → action order, a Dynamo script set, auto-split into parallel Revits, supervisor recovery, each completion mode, Task Scheduler register → on-demand run → delete, toast | ✔ | ✔ | ✔ |
 | Active model | Export Excel → edit → Import Excel, Formula Rules / Apply Now, Mirror Check, every MCP tool | ✔ | ✔ | ✔ |
 | DRW edition★ | Enlarge Room / Stair / Door & Window, Datum Dimension, Match Datums, Single Font, Stair Annotation, Preset Tagger, Wall Mat Tag, Sync View; DRW Batch Run presets | ✔ | ✔ | ✔ |
@@ -228,6 +232,22 @@ Build the converter first: in `tools\ifc2frag` run `npm ci`, `npm run build` and
    converter runs (see `runs\<stamp>\ifc2frag.log`: "waiting for process … exited").
 7. Delete `IfcToFrag\` from the add-in folder and run again: IFC/CSV still written, and
    `ifc2frag.log` says the conversion was skipped.
+
+### Coordinates: Project Base Point at 0,0,0 (Export NWC and Export IFC + Data)
+Use a workshared cloud model whose PBP is NOT on the internal origin, opened by you with a few
+elements of your own borrowed, plus one model whose PBP IS on the internal origin.
+
+1. **Run on active model**, Coordinates = Project Base Point at 0,0,0, NWC then IFC (IFC2x3 CV2 and
+   IFC4 RV). Both files are written, and the Coordinates column says "through a temporary site"
+   (NWC) or "base point … set to 0,0,0" (IFC).
+2. Afterwards the active site has its old name, no `KH_TEMP_PBP_ORIGIN` site exists, every link's
+   Shared Site parameter is unchanged, and the row says the borrowed elements were released. Your own
+   borrowed elements are still yours. The undo list shows two "KH-Tool: … site" entries (NWC only).
+3. Open the NWC in Navisworks with a file known to use the PBP grid: they line up. The IFC lines up
+   too, and `IFCMAPCONVERSION` (IFC4) does not pull it back to survey coordinates.
+4. **Batch Run** over the second model and one more: the PBP-on-origin model says "exported as
+   Internal (model not changed)". A model whose PBP differs from the first gets the WARNING.
+5. A set saved by 2.1.0.7 opens with Shared/Internal exactly as its old checkbox said.
 
 ## 3. Human click-through (about 15 minutes)
 Automation constructs every dialog and runs every engine, but it does not click. In Revit 2026,

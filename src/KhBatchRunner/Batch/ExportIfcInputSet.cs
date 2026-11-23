@@ -56,6 +56,18 @@ public sealed class ExportIfcInputSet
     /// <summary>Place the model by shared coordinates (true) or Revit's internal origin (false).</summary>
     public bool UseSharedCoordinates { get; set; } = true;
 
+    /// <summary>
+    /// The coordinate choice since 2.1.0.8. Null in a set saved by an older build, which then keeps
+    /// meaning what its <see cref="UseSharedCoordinates"/> box said — read it through
+    /// <see cref="EffectiveCoordinates"/>, never directly.
+    /// </summary>
+    public ExportCoordinates? Coordinates { get; set; }
+
+    /// <summary>What the export actually uses: <see cref="Coordinates"/>, or the old checkbox.</summary>
+    [JsonIgnore]
+    public ExportCoordinates EffectiveCoordinates =>
+        Coordinates ?? (UseSharedCoordinates ? ExportCoordinates.Shared : ExportCoordinates.Internal);
+
     public bool ExportCommonPropertySets { get; set; } = true;
     public bool ExportRevitPropertySets { get; set; }
     public bool ExportBaseQuantities { get; set; }
@@ -129,6 +141,7 @@ public sealed class ExportIfcInputSet
         OutputFolder = OutputFolder,
         Schema = Schema,
         UseSharedCoordinates = UseSharedCoordinates,
+        Coordinates = Coordinates,
         ExportCommonPropertySets = ExportCommonPropertySets,
         ExportRevitPropertySets = ExportRevitPropertySets,
         ExportBaseQuantities = ExportBaseQuantities,

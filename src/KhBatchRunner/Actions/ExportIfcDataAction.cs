@@ -47,13 +47,15 @@ public sealed class ExportIfcDataAction : BatchActionBase
     private string _worksetPlan = "";
     private readonly HashSet<string> _usedFolders = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<ManifestModel> _manifest = new();
+    // The first model's PBP this run, for the "Project Base Point at 0,0,0" agreement warning.
+    private readonly ProjectBasePointFrame.Agreement _pbpAgreement = new();
 
     public ExportIfcDataAction(ExportIfcInputSet spec) => _spec = spec;
 
     public override string Name => DisplayName;
 
     public override IReadOnlyList<string> Columns { get; } = new[]
-        { "IFC File", "Scope", "View Used", "IFC Size (MB)", "Elements", "Material Rows", "Rooms", "Placed Rooms m²", "Folder", "Contents" };
+        { "IFC File", "Scope", "View Used", "IFC Size (MB)", "Elements", "Material Rows", "Rooms", "Placed Rooms m²", "Folder", "Coordinates", "Contents" };
 
     public override string PerModelNote => _note;
 
@@ -152,7 +154,7 @@ public sealed class ExportIfcDataAction : BatchActionBase
 
             string ifcName = folderName + ".ifc";
             var sw = Stopwatch.StartNew();
-            ExportIfc(doc, folder, folderName, view);
+            string coordinates = ExportIfc(doc, folder, folderName, view, modelName);
             var ifc = new FileInfo(Path.Combine(folder, ifcName));
             if (!ifc.Exists)
                 throw new InvalidOperationException($"Revit reported no error but no IFC appeared at {ifc.FullName}.");
@@ -199,6 +201,7 @@ public sealed class ExportIfcDataAction : BatchActionBase
                     ["Rooms"] = roomRows.ToString(CultureInfo.InvariantCulture),
                     ["Placed Rooms m²"] = levels.Sum(l => l.AreaM2).ToString("0.##", CultureInfo.InvariantCulture),
                     ["Folder"] = folder,
+                    ["Coordinates"] = coordinates,
                     ["Contents"] = $"workset plan: {_worksetPlan}; " + Schedule.InstanceBudget.FreeMemoryNote(),
                 }
             };
@@ -215,10 +218,18 @@ public sealed class ExportIfcDataAction : BatchActionBase
 
     /// <summary>
     /// Revit's IFC export, inside a transaction that is always rolled back: the exporter refuses to
-    /// run without one, and nothing it touches may reach the model.
+    /// run without one, and nothing it touches may reach the model. Returns the row's "Coordinates"
+    /// text.
+    ///
+    /// <para><b>Project Base Point at 0,0,0</b> uses the exporter's own Project-base-point
+    /// coordinate base (<c>SitePlacement = 2</c>, site elevation left out so Z 0 = PBP), written to a
+    /// temporary <c>_raw_tmp.ifc</c>. That file still carries the survey offset in the model
+    /// context's base point, so <see cref="IfcWcsPatcher"/> writes the final <c>.ifc</c> with that
+    /// point at 0,0,0 and the raw file is deleted. No site is touched: the model is never changed.</para>
     /// </summary>
-    private void ExportIfc(Document doc, string folder, string baseName, View3D? view)
+    private string ExportIfc(Document doc, string folder, string baseName, View3D? view, string modelName)
     {
+        ExportCoordinates frame = _spec.EffectiveCoordinates;
         var options = new IFCExportOptions
         {
             FileVersion = _spec.Schema switch
@@ -240,19 +251,61 @@ public sealed class ExportIfcDataAction : BatchActionBase
         }
         options.AddOption("ExportIFCCommonPropertySets", _spec.ExportCommonPropertySets ? "true" : "false");
         options.AddOption("ExportInternalRevitPropertySets", _spec.ExportRevitPropertySets ? "true" : "false");
-        // Revit IFC exporter's SiteTransformBasis: 0 = shared coordinates, 3 = internal origin.
-        options.AddOption("SitePlacement", _spec.UseSharedCoordinates ? "0" : "3");
+        // Revit IFC exporter's SiteTransformBasis: 0 = shared coordinates, 2 = project base point,
+        // 3 = internal origin.
+        options.AddOption("SitePlacement", frame switch
+        {
+            ExportCoordinates.Internal => "3",
+            ExportCoordinates.ProjectBasePoint => "2",
+            _ => "0",
+        });
+        if (frame == ExportCoordinates.ProjectBasePoint)
+            options.AddOption("IncludeSiteElevation", "false");
 
-        using var t = new Transaction(doc, "Export IFC (rolled back)");
-        t.Start();
+        string exportName = frame == ExportCoordinates.ProjectBasePoint ? baseName + "_raw_tmp" : baseName;
+        using (var t = new Transaction(doc, "Export IFC (rolled back)"))
+        {
+            t.Start();
+            try
+            {
+                doc.Export(folder, exportName, options);
+            }
+            finally
+            {
+                if (t.HasStarted() && !t.HasEnded()) t.RollBack();
+            }
+        }
+
+        if (frame == ExportCoordinates.Internal) return "Internal origin";
+        if (frame == ExportCoordinates.Shared)
+        {
+            string site;
+            try { site = doc.ActiveProjectLocation.Name; } catch { site = "?"; }
+            return $"Shared (site '{site}')";
+        }
+
+        PbpFacts pbp = ProjectBasePointFrame.Read(doc);
+        string agreement = _pbpAgreement.Check(modelName, pbp);
+        string raw = Path.Combine(folder, exportName + ".ifc");
+        string final = Path.Combine(folder, baseName + ".ifc");
+        if (!File.Exists(raw))
+            throw new InvalidOperationException($"Revit reported no error but no IFC appeared at {raw}.");
+        string was;
         try
         {
-            doc.Export(folder, baseName, options);
+            was = IfcWcsPatcher.Patch(raw, final);
         }
         finally
         {
-            if (t.HasStarted() && !t.HasEnded()) t.RollBack();
+            try { File.Delete(raw); } catch { /* best effort — a leftover _raw_tmp.ifc is harmless */ }
         }
+        return string.Join(" ", new[]
+        {
+            "PBP at 0,0,0 — IFC coordinate base = Project Base Point; the base point Revit offset to " +
+            $"({was}) was set to 0,0,0 in the file (model not changed).",
+            pbp.Describe() + ".",
+            agreement,
+        }.Where(s => !string.IsNullOrWhiteSpace(s)));
     }
 
     private IReadOnlyList<string> Extra =>

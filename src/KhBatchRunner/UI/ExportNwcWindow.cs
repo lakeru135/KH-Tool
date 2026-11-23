@@ -35,7 +35,9 @@ public sealed class ExportNwcWindow : Form
     private readonly CheckBox _exportParts;
     private readonly CheckBox _exportRoomGeometry;
     private readonly CheckBox _exportElementIds;
-    private readonly CheckBox _internalCoordinates;
+    // Was the "Export Internal Coordinates (uncheck for shared)" box until 2.1.0.8, when the third
+    // choice — Project Base Point at 0,0,0 — made it a dropdown.
+    private readonly CoordinatesPicker _coordinates;
     private readonly CheckBox _exportUrls;
     private readonly CheckBox _convertLinkedCad;
     private readonly CheckBox _convertLights;
@@ -121,7 +123,7 @@ public sealed class ExportNwcWindow : Form
         _exportRoomGeometry = Chk("Export Room Geometry");
         _exportElementIds = Chk("Export Element Ids", true);
 
-        _internalCoordinates = Chk("Export Internal Coordinates (uncheck for shared)");
+        _coordinates = new CoordinatesPicker(this, isNwc: true);
         _exportUrls = Chk("Export URLs", true);
         _convertLinkedCad = Chk("Export Linked CAD");
         _convertLights = Chk("Convert Lights");
@@ -148,7 +150,7 @@ public sealed class ExportNwcWindow : Form
                  {
                      _convertElementProperties, _exportLinks, _exportRoomAsAttribute, _findMissingMaterials,
                      _divideFileIntoLevels, _exportParts, _exportRoomGeometry, _exportElementIds,
-                     _internalCoordinates, _exportUrls, _convertLinkedCad, _convertLights,
+                     _exportUrls, _convertLinkedCad, _convertLights,
                  })
             grid.Controls.Add(c);
 
@@ -232,6 +234,8 @@ public sealed class ExportNwcWindow : Form
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Saved options set:", _setsCombo, saveBtn, dupBtn, deleteBtn));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Output folder:", _outputBox, browse));
         FormLayout.AddAutoRow(root, grid);
+        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Coordinates:", _coordinates.Combo));
+        FormLayout.AddAutoRow(root, _coordinates.Note);
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Faceting factor:", _facetingBox));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Parameters:", _parametersCombo));
         FormLayout.AddAutoRow(root, scopeRow);
@@ -278,6 +282,12 @@ public sealed class ExportNwcWindow : Form
         // With no saved model sets, exporting the open model is the only thing this dialog can do.
         if (_activeModelCheck != null && _modelSetsList.Items.Count == 0)
             _activeModelCheck.Checked = true;
+
+        // AFTER the restore: a restored "Project Base Point at 0,0,0" grows the Coordinates note by
+        // three lines, and so do DPI scaling and AlignLabels later on. 2.1.0.8 measured only above,
+        // and in Revit the model-set list was drawn over the rows below it. See FormLayout.KeepFitted.
+        Action refit = FormLayout.KeepFitted(this, root);
+        _coordinates.NoteChanged += refit;
     }
 
     /// <summary>Fills every control from the given inputs. <paramref name="loaded"/> marks it as
@@ -298,7 +308,7 @@ public sealed class ExportNwcWindow : Form
         _exportParts.Checked = s.ExportParts;
         _exportRoomGeometry.Checked = s.ExportRoomGeometry;
         _exportElementIds.Checked = s.ExportElementIds;
-        _internalCoordinates.Checked = s.UseInternalCoordinates;
+        _coordinates.Value = s.EffectiveCoordinates;
         _exportUrls.Checked = s.ExportUrls;
         _convertLinkedCad.Checked = s.ConvertLinkedCADFormats;
         _convertLights.Checked = s.ConvertLights;
@@ -355,7 +365,10 @@ public sealed class ExportNwcWindow : Form
             ExportRoomGeometry = _exportRoomGeometry.Checked,
             ExportElementIds = _exportElementIds.Checked,
             ExportUrls = _exportUrls.Checked,
-            UseInternalCoordinates = _internalCoordinates.Checked,
+            // Both: the dropdown for this build, the old box for an older build reading the same
+            // set (a PBP set reads there as shared, the nearest thing it knows).
+            Coordinates = _coordinates.Value,
+            UseInternalCoordinates = _coordinates.Value == ExportCoordinates.Internal,
             ConvertLinkedCADFormats = _convertLinkedCad.Checked,
             ConvertLights = _convertLights.Checked,
             FacetingFactor = faceting,

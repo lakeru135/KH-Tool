@@ -2,6 +2,7 @@ using System.IO;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using KhBatchRunner.Batch;
+using KhBatchRunner.Export;
 using KhBatchRunner.Interop;
 
 namespace KhBatchRunner.Actions;
@@ -37,6 +38,8 @@ public sealed class ExportNwcAction : BatchActionBase
     private readonly string _revitVersion;
     private string _outputFolder = "";
     private string _note = "";
+    // The first model's PBP this run, for the "Project Base Point at 0,0,0" agreement warning.
+    private readonly ProjectBasePointFrame.Agreement _pbpAgreement = new();
     // File names used so far this RUN, so no export can quietly overwrite an earlier one.
     private readonly HashSet<string> _usedNames = new(StringComparer.OrdinalIgnoreCase);
 
@@ -62,7 +65,7 @@ public sealed class ExportNwcAction : BatchActionBase
     public override string Name => DisplayName;
 
     public override IReadOnlyList<string> Columns { get; } = new[]
-        { "Exported File", "Scope", "View Used", "Output Folder", "Size (KB)", "Contents" };
+        { "Exported File", "Scope", "View Used", "Output Folder", "Size (KB)", "Coordinates", "Contents" };
 
     public override string PerModelNote => _note;
 
@@ -412,9 +415,6 @@ public sealed class ExportNwcAction : BatchActionBase
             ConvertLinkedCADFormats = _spec.ConvertLinkedCADFormats,
             ConvertLights = _spec.ConvertLights,
             FacetingFactor = _spec.FacetingFactor,
-            Coordinates = _spec.UseInternalCoordinates
-                ? NavisworksCoordinates.Internal
-                : NavisworksCoordinates.Shared,
             Parameters = _spec.Parameters switch
             {
                 NwcParameterMode.All => NavisworksParameters.All,
@@ -425,7 +425,7 @@ public sealed class ExportNwcAction : BatchActionBase
         if (!wholeModel) options.ViewId = view!.Id;
 
         // Export takes the folder and a BARE name, not a full path.
-        doc.Export(_outputFolder, baseName, options);
+        string coordinates = ExportInFrame(doc, modelName, options, baseName);
 
         var written = new FileInfo(target);
         if (!written.Exists)
@@ -441,9 +441,75 @@ public sealed class ExportNwcAction : BatchActionBase
             ["View Used"] = wholeModel ? "" : view!.Name,
             ["Output Folder"] = _outputFolder,
             ["Size (KB)"] = (written.Length / 1024).ToString(),
+            ["Coordinates"] = coordinates,
             ["Contents"] = Contents(doc, view),
         };
     }
+
+    /// <summary>
+    /// Runs the export in the options set's coordinate frame and returns the row's "Coordinates"
+    /// text.
+    ///
+    /// <para>Shared and Internal map straight onto <see cref="NavisworksCoordinates"/>.
+    /// <b>Project Base Point at 0,0,0</b> has no exporter setting of its own:</para>
+    /// <list type="bullet">
+    /// <item>PBP already on the internal origin — internal coordinates ARE that frame, so it exports
+    /// as Internal and the model is not touched;</item>
+    /// <item>otherwise — <see cref="ProjectBasePointFrame.ExportThroughTemporarySite"/>: a temporary
+    /// site whose shared 0,0,0 is the PBP is made active, the file exported as Shared, and the
+    /// original site made active again. Whatever that borrowed on an attached workshared model is
+    /// given back (<see cref="OwnershipSnapshot"/>), whether or not the export worked.</item>
+    /// </list>
+    /// </summary>
+    private string ExportInFrame(Document doc, string modelName, NavisworksExportOptions options, string baseName)
+    {
+        ExportCoordinates frame = _spec.EffectiveCoordinates;
+        if (frame != ExportCoordinates.ProjectBasePoint)
+        {
+            options.Coordinates = frame == ExportCoordinates.Internal
+                ? NavisworksCoordinates.Internal
+                : NavisworksCoordinates.Shared;
+            doc.Export(_outputFolder, baseName, options);
+            return frame == ExportCoordinates.Internal
+                ? "Internal origin"
+                : $"Shared (site '{SiteName(doc)}')";
+        }
+
+        PbpFacts pbp = ProjectBasePointFrame.Read(doc);
+        string agreement = _pbpAgreement.Check(modelName, pbp);
+
+        if (pbp.AtInternalOrigin)
+        {
+            options.Coordinates = NavisworksCoordinates.Internal;
+            doc.Export(_outputFolder, baseName, options);
+            return Join("PBP at 0,0,0 — the PBP is on the internal origin, so exported as Internal (model not changed).",
+                        pbp.Describe() + ".", agreement);
+        }
+
+        Diagnostics.RunTrace.Mark($"Export NWC | {doc.Title} | PBP frame through temporary site");
+        OwnershipSnapshot? owned = OwnershipSnapshot.Take(doc);
+        string restore = "", ownership = "";
+        try
+        {
+            options.Coordinates = NavisworksCoordinates.Shared;
+            restore = ProjectBasePointFrame.ExportThroughTemporarySite(
+                doc, pbp, () => doc.Export(_outputFolder, baseName, options));
+        }
+        finally
+        {
+            if (owned != null) ownership = owned.ReleaseBorrowed(doc);
+        }
+        return Join("PBP at 0,0,0 — through a temporary site, then the original site was made active again.",
+                    pbp.Describe() + ".", restore, ownership, agreement);
+    }
+
+    private static string SiteName(Document doc)
+    {
+        try { return doc.ActiveProjectLocation.Name; } catch { return "?"; }
+    }
+
+    private static string Join(params string[] parts) =>
+        string.Join(" ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
 
     /// <summary>
     /// Does the chosen scope — the view's, or the document's for a whole-model export — hold anything
