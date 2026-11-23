@@ -74,6 +74,8 @@
     <Compile Include="..\KhBatchRunner\Diagnostics\RunTrace.cs" Link="Shared\Diagnostics\RunTrace.cs" />
     <!-- Dialog open-time instrumentation used by the shared windows; writes to RunTrace only. -->
     <Compile Include="..\KhBatchRunner\Diagnostics\OpenTimer.cs" Link="Shared\Diagnostics\OpenTimer.cs" />
+    <!-- Per-model phase timings (timings.csv): the shared RunSupervisor records slot waits through it. -->
+    <Compile Include="..\KhBatchRunner\Diagnostics\PhaseTimings.cs" Link="Shared\Diagnostics\PhaseTimings.cs" />
 
     <!-- Job model + stores + the launch/supervise machinery: files and processes, which is precisely
          the part the controller should own. Three are excluded — ScheduledRunner (drives BatchEngine
