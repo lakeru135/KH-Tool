@@ -55,6 +55,8 @@ internal sealed partial class RunSupervisor
     private readonly Action<RunManifest>? _onFinished;
     private readonly bool _showRoundNotifications;
     private Thread? _thread;
+    // Since this supervisor began: a queued group's wait for a slot is measured against it.
+    private readonly System.Diagnostics.Stopwatch _sinceStart = System.Diagnostics.Stopwatch.StartNew();
 
     private RunSupervisor(RunManifest manifest, Action<RunManifest>? onFinished,
         bool showRoundNotifications)
@@ -300,7 +302,11 @@ internal sealed partial class RunSupervisor
             bool ok = ChunkLauncher.StartPending(_manifest, g, i + 1, groups.Count, out string? err);
             RunManifestStore.Save(_manifest);   // Pid/StartedAt, or LaunchFailed, now matter
             if (ok)
+            {
                 Adopt(g);
+                Diagnostics.PhaseTimings.RunEvent("slot-queue-wait", _sinceStart.ElapsedMilliseconds,
+                    $"group {i + 1} of {groups.Count} started when a slot freed");
+            }
             else
                 Note("ERROR", $"group {i + 1} of {groups.Count} could not start when a slot freed: " +
                               $"{err} — {g.Models.Count} model(s) did not run.");

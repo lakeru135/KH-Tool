@@ -79,7 +79,9 @@ public sealed partial class BatchEngine
     /// </summary>
     private Document ReopenWithRequiredWorksets(CloudModel model, Document doc, bool detached, bool activate)
     {
-        IList<WorksetId>? required = RequiredClosedWorksets(doc);
+        IList<WorksetId>? required;
+        using (Diagnostics.PhaseTimings.Time("workset-plan"))
+            required = RequiredClosedWorksets(doc);
         if (required is null)
         {
             // Nothing to reopen. Two different reasons, and only one of them is an opportunity: this
@@ -88,7 +90,10 @@ public sealed partial class BatchEngine
             // below records at). Missing this case would leave every model whose first open works
             // permanently without a record.
             if (_action.OpensAllWorksets || _action.PlansWorksetOpen)
-                WorksetContentsProbe.Record(doc);
+            {
+                using (Diagnostics.PhaseTimings.Time("contents-probe"))
+                    WorksetContentsProbe.Record(doc);
+            }
             return doc;
         }
 
@@ -99,9 +104,12 @@ public sealed partial class BatchEngine
         // A SECOND blocking open of the same model — traced separately so a stall here is never
         // mistaken for the first open.
         Trace(model, $"{BatchStages.ReopenForWorksets}{required.Count} workset(s)");
-        RelinquishBeforeClose(doc);
-        CloseWithoutSaving(doc);
-        CleanupPendingLocal(); // a local write-Action's first temp copy; the reopen makes a fresh one
+        using (Diagnostics.PhaseTimings.Time("close-before-reopen"))
+        {
+            RelinquishBeforeClose(doc);
+            CloseWithoutSaving(doc);
+            CleanupPendingLocal(); // a local write-Action's first temp copy; the reopen makes a fresh one
+        }
 
         Document? reopened;
         string? refused = null;
@@ -114,7 +122,8 @@ public sealed partial class BatchEngine
             bool widen = ReopenLadder.WidensToAll(attempt) && all.Count > 0;
             IList<WorksetId> asking = widen ? all : required;
 
-            reopened = OpenModel(model, detached, activate, asking);
+            using (Diagnostics.PhaseTimings.Time("reopen"))
+                reopened = OpenModel(model, detached, activate, asking);
 
             int open = OpenUserWorksets(reopened).Count;
             int total = AllUserWorksets(reopened).Count;
@@ -148,7 +157,8 @@ public sealed partial class BatchEngine
                 // Here rather than inside an action because two actions consume this evidence
                 // (Export NWC's view-derived plan and, since 1.4.3, Batch Interop's) and only one
                 // used to produce it. See WorksetContentsProbe.
-                WorksetContentsProbe.Record(reopened);
+                using (Diagnostics.PhaseTimings.Time("contents-probe"))
+                    WorksetContentsProbe.Record(reopened);
 
                 return reopened;
             }
@@ -158,9 +168,12 @@ public sealed partial class BatchEngine
             Trace(model, $"reopen refused (attempt {attempt} of {ReopenLadder.Attempts}): " +
                          $"{open} of {total} open, {asking.Count} asked for" +
                          (ReopenLadder.CanRetry(attempt) ? " — retrying" : ""));
-            RelinquishBeforeClose(reopened);
-            CloseWithoutSaving(reopened);
-            CleanupPendingLocal();
+            using (Diagnostics.PhaseTimings.Time("close-refused-reopen"))
+            {
+                RelinquishBeforeClose(reopened);
+                CloseWithoutSaving(reopened);
+                CleanupPendingLocal();
+            }
             reopened = null;
         }
 

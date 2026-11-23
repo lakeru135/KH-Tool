@@ -393,7 +393,10 @@ public sealed class ExportNwcAction : BatchActionBase
         // Nothing to export is something this action can see for itself, and handing it to the
         // exporter costs a modal "No suitable geometry found" that stops the instance until the
         // dialog breaker answers it 45 seconds later. Said plainly here instead.
-        if (!HasExportableGeometry(doc, view))
+        bool hasGeometry;
+        using (Diagnostics.PhaseTimings.Time("run/geometry-precheck"))
+            hasGeometry = HasExportableGeometry(doc, view);
+        if (!hasGeometry)
         {
             string what = wholeModel ? "this model" : $"view '{view!.Name}'";
             throw new InvalidOperationException(
@@ -425,7 +428,11 @@ public sealed class ExportNwcAction : BatchActionBase
         if (!wholeModel) options.ViewId = view!.Id;
 
         // Export takes the folder and a BARE name, not a full path.
-        string coordinates = ExportInFrame(doc, modelName, options, baseName);
+        // Timed as one phase: for "Project Base Point at 0,0,0" that includes the two short site
+        // transactions around the export.
+        string coordinates;
+        using (Diagnostics.PhaseTimings.Time("run/nwc-export"))
+            coordinates = ExportInFrame(doc, modelName, options, baseName);
 
         var written = new FileInfo(target);
         if (!written.Exists)
@@ -587,6 +594,7 @@ public sealed class ExportNwcAction : BatchActionBase
     /// </summary>
     private string Contents(Document doc, View3D? view)
     {
+        using IDisposable timing = Diagnostics.PhaseTimings.Time("run/contents-note");
         try
         {
             int inDoc = new FilteredElementCollector(doc)
