@@ -37,11 +37,11 @@ internal static class McpCode
         if (Button != null) Button.ItemText = CaptionFor(Enabled);
     }
 
-    /// <summary>Test-rig hook, as <see cref="McpBridge.AutoStartIfAsked"/>: KHMCP_CODE=1 turns AI
-    /// Code on at startup.</summary>
+    /// <summary>Test-rig hook, as <see cref="McpBridge.AutoStartIfAsked"/>: KHMCP_CODE=1, or a dev
+    /// install (<see cref="McpBridge.DevAutoStart"/>), turns AI Code on at startup.</summary>
     public static void AutoStartIfAsked()
     {
-        if (Environment.GetEnvironmentVariable("KHMCP_CODE") != "1") return;
+        if (Environment.GetEnvironmentVariable("KHMCP_CODE") != "1" && !McpBridge.DevAutoStart) return;
         Enabled = true;
         if (Button != null) Button.ItemText = CaptionFor(true);
     }

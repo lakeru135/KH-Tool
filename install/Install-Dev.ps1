@@ -140,6 +140,8 @@ if ($RestoreInstalled) {
     # restoring one product must not take the other off the ribbon.
     $devManifest = Join-Path $dest "$asmName.addin"
     if (Test-Path $devManifest) { Remove-Item $devManifest -Force; Write-Host "  removed dev $asmName.addin" }
+    $devFlag = Join-Path $payload "kh-dev-autostart.flag"
+    if (Test-Path $devFlag) { Remove-Item $devFlag -Force; Write-Host "  removed kh-dev-autostart.flag" }
     if ($payload -ne $dest -and (Test-Path $payload)) {
         Remove-Item $payload -Recurse -Force; Write-Host "  removed dev $payload"
     }
@@ -223,6 +225,12 @@ if (Test-Path $fixtures) {
 # .NET 8 (2025/2026) ignores the mark, so only 2024 shows it.
 Get-ChildItem -Path $payload -Recurse -File | Unblock-File
 Unblock-File (Join-Path $dest "$asmName.addin")
+
+# Marks this as a DEV install: KH-Tool then starts with AI Bridge and AI Code ON (McpBridge.DevAutoStart),
+# so an AI session can test the build without two clicks after every Revit restart. No installer
+# ships this file, so released builds keep both off at every start. -RestoreInstalled removes it.
+Set-Content -Path (Join-Path $payload "kh-dev-autostart.flag") -Encoding ASCII -Value ("Dev install " + (Get-Date -Format s) + " - AI Bridge and AI Code start ON.")
+Write-Host "  wrote kh-dev-autostart.flag (AI Bridge + AI Code start ON)"
 
 # After the manifest is in place, so the AddInId comparison reads what was just deployed.
 Disable-ConflictingManifests

@@ -105,13 +105,37 @@ internal static class McpBridge
 
     /// <summary>
     /// Test-rig hook: a Revit started with KHMCP_AUTOSTART=1 turns the bridge on at startup, so a
-    /// headless/automated test needs no click. Without it the bridge stays off at every start.
-    /// Called from OnStartup, which is an API context (ExternalEvent.Create needs one).
+    /// headless/automated test needs no click. So does a DEV install (<see cref="DevAutoStart"/>).
+    /// Otherwise the bridge stays off at every start. Called from OnStartup, which is an API context
+    /// (ExternalEvent.Create needs one).
     /// </summary>
     public static void AutoStartIfAsked()
     {
-        if (Environment.GetEnvironmentVariable("KHMCP_AUTOSTART") != "1" || IsRunning) return;
+        if ((Environment.GetEnvironmentVariable("KHMCP_AUTOSTART") != "1" && !DevAutoStart) || IsRunning) return;
         if (Start() == null && Button != null) Button.ItemText = CaptionFor(true);
+    }
+
+    /// <summary>The marker <c>install\Install-Dev.ps1</c> writes beside the dll it deploys.</summary>
+    public const string DevAutoStartFlag = "kh-dev-autostart.flag";
+
+    /// <summary>
+    /// True when this dll was deployed by <c>install\Install-Dev.ps1</c>, which leaves
+    /// <see cref="DevAutoStartFlag"/> beside it: a developer's own build, where AI Bridge and AI Code
+    /// start ON so an AI session can test it without the user clicking both after every restart (the
+    /// user, 2026-11-23: "next time on dev version keep it open"). No installer ships the marker, so
+    /// a released build keeps both off at every start.
+    /// </summary>
+    public static bool DevAutoStart
+    {
+        get
+        {
+            try
+            {
+                string? dir = Path.GetDirectoryName(typeof(McpBridge).Assembly.Location);
+                return !string.IsNullOrEmpty(dir) && File.Exists(Path.Combine(dir, DevAutoStartFlag));
+            }
+            catch { return false; }
+        }
     }
 
     private static string? Start()
