@@ -38,7 +38,7 @@ internal static class Product
 #endif
 
     // One version line for every edition: the public repository starts at 2.0.0.
-    public const string Version = "2.1.0.8";
+    public const string Version = "2.1.1.0";
     public const string Publisher = "Kanghun BIM";
 
     /// <summary>
@@ -97,7 +97,7 @@ internal static class Product
 
     private static DateTime ResolveBuiltInExpiryUtc()
     {
-        var fallback = new DateTime(2027, 2, 10, 0, 0, 0, DateTimeKind.Utc);   // 2.1.0.0: 90 days from 2026-11-12
+        var fallback = new DateTime(2027, 2, 22, 0, 0, 0, DateTimeKind.Utc);   // 2.1.1.0: 90 days from 2026-11-24
         try
         {
             foreach (var attr in typeof(Product).Assembly
@@ -118,20 +118,9 @@ internal static class Product
     /// <summary>Short "what's new" list shown on the About dialog. Keep the newest at the top.</summary>
 #if EDITION_DRW
     public const string Changelog =
-        "DRW Helper (2.1.0.8) — review build:\n" +
-        "• Version kept in step with KH-Tool 2.1.0.8; the DRW tools are unchanged.\n\n" +
-        "DRW Helper (2.1.0.7) — review build:\n" +
-        "• Version kept in step with KH-Tool 2.1.0.7; the DRW tools are unchanged.\n\n" +
-        "DRW Helper (2.1.0.6) — review build:\n" +
-        "• Version kept in step with KH-Tool 2.1.0.6; the DRW tools are unchanged.\n\n" +
-        "DRW Helper (2.1.0.5) — review build:\n" +
-        "• Version kept in step with KH-Tool 2.1.0.5; the DRW tools are unchanged.\n\n" +
-        "DRW Helper (2.1.0.4) — review build:\n" +
-        "• Version kept in step with KH-Tool 2.1.0.4; the DRW tools are unchanged.\n\n" +
-        "DRW Helper (2.1.0.3) — review build:\n" +
-        "• Version kept in step with KH-Tool 2.1.0.3; the DRW tools are unchanged.\n\n" +
-        "DRW Helper (2.1.0.2) — review build:\n" +
-        "• Adds a build for Revit 2027.\n\n" +
+        "DRW Helper (2.1.1):\n" +
+        "• Adds a build for Revit 2027.\n" +
+        "• Version kept in step with KH-Tool 2.1.1; the DRW tools are otherwise unchanged.\n\n" +
         "DRW Helper (2.1.0):\n" +
         "• Version kept in step with KH-Tool 2.1.0; the DRW tools are unchanged.\n\n" +
         "DRW Helper (2.0.0) — first public release:\n" +
@@ -142,45 +131,31 @@ internal static class Product
         "• Setting: Model Set, Batch Run, Sync View.";
 #else
     public const string Changelog =
-        "KH-Tool (2.1.0.8) — review build:\n" +
+        "KH-Tool (2.1.1):\n" +
         "• Export NWC and Export IFC + Data: a Coordinates dropdown replaces the coordinates " +
-        "checkbox, with a third choice, \"Project Base Point at 0,0,0\" (project north up, Z 0 = PBP " +
+        "checkbox, with a new choice, \"Project Base Point at 0,0,0\" (project north up, Z 0 = PBP " +
         "elevation), for federations drawn on a local grid. NWC goes through a temporary site that is " +
         "deleted afterwards; IFC uses Revit's Project-base-point setting and sets the survey offset it " +
-        "still writes to 0. A new Coordinates column says what each file used and warns when a " +
-        "model's PBP differs from the run's first model. Old saved sets open unchanged. See the " +
-        "handbook, \"Coordinates in Export NWC and Export IFC + Data\".\n\n" +
-        "KH-Tool (2.1.0.7) — review build:\n" +
-        "• Export IFC + Data: a cloud model's Forma ids (hub, project, folder, item) go into the " +
-        "export index, so the BIM report can open the model in Forma.\n\n" +
-        "KH-Tool (2.1.0.6) — review build:\n" +
-        "• Export IFC + Data: with rooms.csv on, a 3D-view export also puts the rooms in the IFC (as " +
-        "spaces), and the BIM report can show a room in 3D from its Areas table.\n\n" +
-        "KH-Tool (2.1.0.5) — review build:\n" +
-        "• Get Data Extract: \"Newest extract of any request\" downloads whatever finished last on the " +
-        "account, including Forma's one-off \"Run now\" extracts, which each make a new request.\n\n" +
-        "KH-Tool (2.1.0.4) — review build:\n" +
-        "• Export IFC + Data writes quantities: elements.csv gains Volume_m3 and Area_m2, and a new " +
-        "materials.csv holds volume and area per element per material (paint as its own rows) for the " +
-        "BIM report's Quantities. \"Write materials.csv (quantities)\" is on by default.\n\n" +
-        "KH-Tool (2.1.0.3) — review build:\n" +
-        "• Export IFC + Data keeps only the latest IFC: after conversion each model is moved into " +
-        "latest\\, replacing the previous run's files, instead of a full copy per run in runs\\. " +
-        "Tick \"Also keep each run's IFC in runs\\\" for the old behaviour. Runs are now kept 7 days " +
-        "by default (was 14).\n" +
-        "• A blank Output folder now means <run destination>\\IFC (was the destination itself), the " +
-        "folder the BIM report reads when a project folder is the run's destination.\n" +
-        "• Get Site Location & PBP: the PBP and Survey columns are now shared coordinates (the E/W, " +
-        "N/S and Elev Revit shows on the point), per site row, so coordinated models agree. The old " +
-        "internal-origin reading is kept as PBP Internal X/Y/Z.\n\n" +
-        "KH-Tool (2.1.0.2) — review build:\n" +
+        "still writes to 0. A Coordinates column says what each file used and warns when a model's " +
+        "PBP differs from the run's first model. See the handbook, \"Coordinates in Export NWC and " +
+        "Export IFC + Data\".\n" +
+        "• Export NWC and Export IFC + Data: tick several model sets for one run, or run on the model " +
+        "that is open (\"Run on active model only\"). Batch Link RVT can also run on the open model.\n" +
+        "• Export IFC + Data: writes quantities (Volume_m3 and Area_m2 in elements.csv, and a new " +
+        "materials.csv); puts the rooms of a 3D-view export in the IFC; keeps only the latest IFC (tick " +
+        "\"Also keep each run's IFC in runs\\\" for the old behaviour; runs kept 7 days); a blank " +
+        "Output folder means <run destination>\\IFC; and a cloud model's Forma ids go into the export " +
+        "index so the BIM report can open it in Forma.\n" +
+        "• Large Export NWC / IFC runs: each model's Revit memory is recorded, and a set whose models " +
+        "are all measured may run more Revits at once when the PC has the RAM. Per-model timings go to " +
+        "timings.csv.\n" +
+        "• Get Site Location & PBP: the PBP and Survey columns are shared coordinates, per site row; " +
+        "the internal reading is kept as PBP Internal X/Y/Z.\n" +
+        "• Get Data Extract: \"Newest extract of any request\".\n" +
+        "• Dialogs keep fitting their content: a restored saved set, a longer note or display scaling " +
+        "no longer pushes the model-set list over the rows below it.\n" +
+        "• Saved sets behave the same in every dialog, and folder boxes start on the last folder used.\n" +
         "• Adds a build for Revit 2027.\n\n" +
-        "KH-Tool (2.1.0.1) — review build:\n" +
-        "• Export NWC and Export IFC + Data: tick several model sets for one run, or run on the " +
-        "model that is open (\"Run on active model only\" appears when a project is open).\n" +
-        "• Batch Link RVT can also run on the open model; nothing is saved or synced.\n" +
-        "• Saving, renaming, duplicating and deleting a saved set now behaves the same in every " +
-        "dialog, and every folder box starts on the last folder a run used.\n\n" +
         "KH-Tool (2.1.0):\n" +
         "• NWD Helper: new Export IFC + Data — exports IFC with element and room data as CSV. Runs " +
         "from its own button, Batch Run or Schedule Run. The .frag conversion for web viewers needs " +

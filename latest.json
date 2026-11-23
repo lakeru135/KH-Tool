@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.1.0.0",
+  "latestVersion": "2.1.1.0",
   "downloadNote": "Download the installer from https://github.com/lakeru135/KH-Tool/releases/latest",
-  "allowedUntil": "2027-02-10",
+  "allowedUntil": "2027-02-22",
   "minVersion": null,
   "versionExpiry": {},
-  "message": "KH-Tool 2.1.0 adds Export IFC + Data on the NWD Helper panel (IFC with element and room CSVs), plus an internal code cleanup that changes no behaviour."
+  "message": "KH-Tool 2.1.1 adds \"Project Base Point at 0,0,0\" coordinates to Export NWC and Export IFC + Data, Revit 2027, running the exports on the open model, IFC quantities, and dialogs that keep fitting their content at every display scale."
 }
