@@ -299,7 +299,7 @@ public static partial class ScheduledRunner
                         splitModels.Models.Count,
                         InstanceBudget.EffectiveGroupSize(
                             _hlJob.GroupSize, splitModels.Models, InstanceBudget.WeightFor(_hlJob)),
-                        alwaysSupervise: RunsInterop(_hlJob));
+                        alwaysSupervise: RunsInterop(_hlJob) || RunsExport(_hlJob));
 
                     // A split was asked for and the only thing that stopped it is free RAM: say so,
                     // because that is the one cause the person at the machine can remove.

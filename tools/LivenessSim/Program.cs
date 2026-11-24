@@ -63,6 +63,7 @@ internal static class Program
             StartupCases();
             StaggerCase();
             ShutdownCases();
+            UnattendedFinishCases();
             SlowOpenCases();
             ModelBlockCases();
             FirstOpenGateCases();
@@ -118,6 +119,37 @@ internal static class Program
         string destination = ArgValue(args, "--destination") ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             "KhBatchTest", "schedule-live-134", id);
+
+        // --job-json <file>: register a job written by hand (cloud model sets, export specs…) instead
+        // of the built-in local-model job. Its id, name and time are overridden like the default's.
+        string? jobJson = ArgValue(args, "--job-json");
+        if (jobJson != null)
+        {
+            if (!File.Exists(revit)) { Console.Error.WriteLine("Revit not found: " + revit); return 2; }
+            // Saved option sets write some enums by name ("Ifc4ReferenceView"); this converter reads
+            // names and numbers alike.
+            var jsonOptions = new JsonSerializerOptions();
+            jsonOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+            ScheduledJob? custom = JsonSerializer.Deserialize<ScheduledJob>(File.ReadAllText(jobJson), jsonOptions);
+            if (custom == null) { Console.Error.WriteLine("Could not read " + jobJson); return 2; }
+            DateTime at = DateTime.Now.AddMinutes(delay);
+            at = new DateTime(at.Year, at.Month, at.Day, at.Hour, at.Minute, 0, DateTimeKind.Local);
+            custom.Id = id;
+            custom.Name = name;
+            custom.ScheduleOwner = owner;
+            custom.Time = at.ToString("HH':'mm", CultureInfo.InvariantCulture);
+            custom.Recurrence = ScheduleRecurrence.Once;
+            custom.StartDate = at.Date;
+            custom.Enabled = true;
+            ScheduleStore.Save(custom);
+            (bool jok, string jmsg) = TaskSchedulerGateway.Create(custom, revit);
+            Console.WriteLine(jmsg);
+            if (!jok) { ScheduleStore.Delete(id); return 1; }
+            Console.WriteLine("LIVE_ID=" + custom.Id);
+            Console.WriteLine("LIVE_TASK=" + custom.TaskName);
+            Console.WriteLine("LIVE_START=" + at.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture));
+            return 0;
+        }
 
         List<string> modelPaths = ArgValues(args, "--model");
         if (modelPaths.Count == 0)
@@ -1177,6 +1209,145 @@ internal static class Program
             RunSupervisor.SlotsToFill(groups, 2, g => !g.SlowExitReported).Single(), 2);
         Expect("and without that rule the queued group would still be waiting",
             RunSupervisor.SlotsToFill(groups, 2).Count, 0);
+    }
+
+    /// <summary>
+    /// 2.1.1.1 — a run finishes by itself. Every case is the 2026-11-23 BPP run or the user's
+    /// 2026-11-24 rule: the supervisor may end a Revit only when it is finished or already crashed.
+    /// </summary>
+    private static void UnattendedFinishCases()
+    {
+        Section("2.1.1.1  a close posted is never forgotten");
+
+        // THE REGRESSION, at its exact shape: close posted, then a dialog line 4 s later, both read
+        // by one poll. The latest line is the dialog; the close must still be known.
+        const int pid = 1752;
+        string started = DateTime.Now.AddMinutes(-30).ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);
+        string closeAt = DateTime.Now.AddMinutes(-11).ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);
+        string dialogAt = DateTime.Now.AddMinutes(-11).AddSeconds(4).ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);
+        var tail = new RunTrace.Tail(Trail(
+            (started, pid, "Export NWC | MODEL-1.rvt | run"),
+            (closeAt, pid, $"{RevitShutdown.ClosePostedMark} pid={pid}: scheduled/headless batch complete"),
+            (dialogAt, pid, "foreign dialog is blocking this Revit: Changes Not Saved")));
+        tail.Poll();
+        Expect("the latest line is the dialog, as on 2026-11-23",
+            tail.For(pid)?.Stage, "foreign dialog is blocking this Revit: Changes Not Saved");
+        Expect("…but the close is remembered", tail.ClosePosted(pid).HasValue, true);
+        Expect("…and so is the last model line",
+            tail.LastModelLine(pid)?.Stage, "Export NWC | MODEL-1.rvt | run");
+
+        var finished = Watch(pid: pid, startedMinutesAgo: 40);
+        finished.LastStage = "foreign dialog is blocking this Revit: Changes Not Saved";
+        finished.LastWorkMarkAt = DateTime.Now.AddMinutes(-11);
+        finished.CurrentModelStartedAt = DateTime.Now.AddMinutes(-11);
+        finished.LastProgressAt = DateTime.Now.AddMinutes(-11);
+        Expect("it has asked to close", ChildLiveness.HasAskedToClose(finished, tail), true);
+        Expect("flat 11 min after its close, behind a dialog, is NOT wedged",
+            ChildLiveness.Check(finished, tail, Models(8)).Verdict, ChildLiveness.Verdict.Working);
+        Expect("…and stays closing even once its stage moves on",
+            ChildLiveness.HasAskedToClose(finished, EmptyTail()), true);
+
+        // Pid reuse: the trail spans weeks. A close by an EARLIER process with the same pid must not
+        // make a freshly launched child look finished.
+        var reused = Watch(pid: pid, startedMinutesAgo: 5);
+        reused.LastStage = "Export NWC | MODEL-1.rvt | run";
+        Expect("a close older than the child's launch is someone else's",
+            ChildLiveness.HasAskedToClose(reused, tail), false);
+
+        Section("2.1.1.1  ending a Revit: only finished ones");
+
+        var closing = Watch(pid: 2001, startedMinutesAgo: 60);
+        closing.ShutdownSince = DateTime.Now.AddMinutes(-4);
+        var all = new HashSet<string>(Models(3).Select(m => m.DisplayName));
+        Expect("finished, closing past the grace → ended",
+            ChildLiveness.ShouldForceClose(closing, DateTime.Now, Models(3), all), true);
+        var missingOne = new HashSet<string>(all.Take(2));
+        Expect("one model still without a row → NOT ended",
+            ChildLiveness.ShouldForceClose(closing, DateTime.Now, Models(3), missingOne), false);
+        var early = Watch(pid: 2002, startedMinutesAgo: 60);
+        early.ShutdownSince = DateTime.Now.AddMinutes(-1);
+        Expect("inside the grace → not yet",
+            ChildLiveness.ShouldForceClose(early, DateTime.Now, Models(3), all), false);
+        var working = Watch(pid: 2003, startedMinutesAgo: 60);
+        Expect("never asked to close → never ended, however stuck",
+            ChildLiveness.ShouldForceClose(working, DateTime.Now, Models(3), all), false);
+        Expect("an empty group is never 'finished'",
+            ChildLiveness.ShouldForceClose(closing, DateTime.Now, new List<CloudModel>(), all), false);
+        Expect("the grace is minutes, not the 30-minute shutdown grace",
+            ChildLiveness.ForceCloseGrace < ChildLiveness.ShutdownGrace, true);
+
+        Section("2.1.1.1  the crash reporter: ours only");
+
+        var launched = new HashSet<int> { 3001, 3002 };
+        Expect("reporter of a live child → end both",
+            CrashReporterWatch.Decide(new(9001, 3001), launched, p => p == 3001),
+            CrashReporterWatch.Action.EndChildAndReporter);
+        Expect("reporter left by a child that has gone → end the reporter",
+            CrashReporterWatch.Decide(new(9002, 3002), launched, _ => false),
+            CrashReporterWatch.Action.EndReporter);
+        Expect("reporter of the user's own Revit → untouched",
+            CrashReporterWatch.Decide(new(9003, 4444), launched, _ => true),
+            CrashReporterWatch.Action.Ignore);
+        Expect("reporter with no readable parent → untouched",
+            CrashReporterWatch.Decide(new(9004, 0), launched, _ => true),
+            CrashReporterWatch.Action.Ignore);
+
+        Section("2.1.1.1  a crash while exporting gets the open-crash rule");
+
+        var group = Models(3);
+        var none = new HashSet<string>();
+        var hit = RunSupervisor.CrashedOn("Export NWC | MODEL-2.rvt | run", group, none);
+        Expect("died in 'run' → that model", hit?.Model.DisplayName, "MODEL-2.rvt");
+        Expect("…not during an open", hit?.DuringOpen, false);
+        Expect("an action's own line names the model without .rvt",
+            RunSupervisor.CrashedOn("Export IFC + Data | MODEL-3 | IFC 43.8 MB in 31s", group, none)?.Model.DisplayName,
+            "MODEL-3.rvt");
+        Expect("died opening → during the open",
+            RunSupervisor.CrashedOn("Export NWC | MODEL-1.rvt | open (background, detached)", group, none)?.DuringOpen,
+            true);
+        Expect("a model that already has its row is never blamed",
+            RunSupervisor.CrashedOn("Export NWC | MODEL-2.rvt | close", group, new HashSet<string> { "MODEL-2.rvt" }).HasValue,
+            false);
+        Expect("a two-field line names no model",
+            RunSupervisor.CrashedOn("Export NWC | workset plan: 2 of 3 workset(s)", group, none).HasValue, false);
+        Expect("a name that merely CONTAINS another is not it",
+            RunSupervisor.CrashedOn("Export NWC | MODEL-22.rvt | run", group, none).HasValue, false);
+
+        Expect("first export crash → retried once",
+            RunSupervisor.OpenCrashPolicy(0, knownWorkshared: true, duringOpen: false), RunSupervisor.OpenCrashOutcome.Retry);
+        Expect("second export crash → skipped, even if workshared",
+            RunSupervisor.OpenCrashPolicy(1, knownWorkshared: true, duringOpen: false), RunSupervisor.OpenCrashOutcome.GiveUp);
+        Expect("a workshared OPEN crash still takes the ladder",
+            RunSupervisor.OpenCrashPolicy(1, knownWorkshared: true, duringOpen: true), RunSupervisor.OpenCrashOutcome.Ladder);
+
+        Section("2.1.1.1  Revit's exit questions, after the close only");
+
+        Expect("nothing answered before the close",
+            ShutdownDialogAnswers.AnswerFor(ShutdownDialogAnswers.ChangesNotSaved, closePosted: false).HasValue, false);
+        Expect("Changes Not Saved → Do not save",
+            ShutdownDialogAnswers.AnswerFor(ShutdownDialogAnswers.ChangesNotSaved, closePosted: true), (int?)1003);
+        Expect("checked-out elements → Relinquish",
+            ShutdownDialogAnswers.AnswerFor(ShutdownDialogAnswers.CloseWithoutSaving, closePosted: true), (int?)1001);
+        Expect("any other dialog → left alone",
+            ShutdownDialogAnswers.AnswerFor("TaskDialog_Something_Else", closePosted: true).HasValue, false);
+
+        Section("2.1.1.1  the empty-export box is not worth 45 seconds");
+
+        const string noGeometry = "Navisworks NWC Exporter — No suitable geometry found. Please check what part you want to export";
+        Expect("unattended → answered at once",
+            ForeignDialogBreaker.GraceFor(noGeometry, unattended: true), TimeSpan.Zero);
+        Expect("somebody at the PC still gets to read it",
+            ForeignDialogBreaker.GraceFor(noGeometry, unattended: false), ForeignDialogBreaker.Grace);
+        Expect("any other dialog keeps the full grace",
+            ForeignDialogBreaker.GraceFor("Model Upgrade — This linked file is being upgraded", unattended: true),
+            ForeignDialogBreaker.Grace);
+
+        Section("2.1.1.1  an export never runs in the user's own Revit");
+
+        Expect("a 3-model export set still goes to one supervised Revit",
+            InteractiveSplit.SupervisedGroupSize(3, 8, alwaysSupervise: true), 3);
+        Expect("a non-export set that fits stays in this Revit",
+            InteractiveSplit.SupervisedGroupSize(3, 8, alwaysSupervise: false), 0);
     }
 
     /// <summary>

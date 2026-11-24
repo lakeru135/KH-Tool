@@ -8,7 +8,9 @@ namespace KhBatchRunner.Schedule;
 /// <summary>
 /// Requests a normal Revit shutdown without ever terminating the process.
 /// Revit has no public API Quit method, but its top-level Windows window honours WM_CLOSE.
-/// If a dialog or genuine hang blocks that close, Revit remains open for inspection.
+/// If a dialog or genuine hang blocks that close, this class does nothing more. Since 2.1.1.1 a
+/// supervised child that has FINISHED its models is ended by <see cref="RevitTerminator"/> instead
+/// of waiting for a person; a Revit that is still working is never ended.
 /// </summary>
 internal static class RevitShutdown
 {
@@ -22,12 +24,22 @@ internal static class RevitShutdown
     /// </summary>
     public const string ClosePostedMark = "normal close posted";
 
+    /// <summary>
+    /// True once THIS process has asked itself to close. Read by
+    /// <see cref="ShutdownDialogAnswers"/>, which answers Revit's exit questions only from then on,
+    /// and by <c>ForeignDialogBreaker</c>, which must not then close a dialog it cannot read, because
+    /// closing Revit's "Changes Not Saved" box is Cancel — and Cancel cancels the quit
+    /// (2026-11-23 20:18).
+    /// </summary>
+    public static bool ClosePostedByThisProcess { get; private set; }
+
     /// <summary>Posts a close after the caller returns to Revit's message loop.</summary>
     public static void RequestCurrent(string reason)
     {
         int pid;
         try { pid = Process.GetCurrentProcess().Id; }
         catch { return; }
+        ClosePostedByThisProcess = true;
 
         try
         {

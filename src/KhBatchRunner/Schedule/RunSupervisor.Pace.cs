@@ -22,6 +22,9 @@ internal sealed partial class RunSupervisor
     {
         var replacements = new List<RunGroup>();
 
+        // Before the sweep: a crashed child ended here is then found gone below, in this same tick.
+        SweepCrashReporters();
+
         foreach (RunGroup group in CurrentGroups())
         {
             if (!IsRunning(group)) continue;
@@ -41,6 +44,12 @@ internal sealed partial class RunSupervisor
             if (!_watches.TryGetValue(group.Pid, out ChildLiveness.Watch? watch)) continue;
 
             ChildLiveness.Judgement judgement = ChildLiveness.Check(watch, _tail, group.Models);
+
+            // Finished, but its close is blocked: end it rather than leave it for the user. The
+            // ended process is found gone on the next tick and takes the ordinary exit path, which
+            // AskedToClose recognises as a finish, not a crash.
+            if (ForceCloseIfFinished(group, watch)) continue;
+
             switch (judgement.Verdict)
             {
                 case ChildLiveness.Verdict.Wedged:
@@ -122,9 +131,93 @@ internal sealed partial class RunSupervisor
     /// releasing it. <see cref="RoundFinished"/> asks the other question and does count it.</para>
     /// </summary>
     private bool IsDoneBarExiting(RunGroup group) =>
-        group.SlowExitReported ||
-        (_watches.TryGetValue(group.Pid, out ChildLiveness.Watch? w) &&
-         ChildLiveness.IsShuttingDown(w.LastStage));
+        group.SlowExitReported || AskedToClose(group);
+
+    /// <summary>
+    /// Whether this group's child has asked to close at ANY point since it was launched — not merely
+    /// whether its latest trail line says so. The three callers (slot reuse, the crash post-mortem,
+    /// replacement planning) used to read only the last line, and on 2026-11-23 a dialog line written
+    /// four seconds after the close hid it from all three. See
+    /// <see cref="ChildLiveness.HasAskedToClose"/>.
+    /// </summary>
+    private bool AskedToClose(RunGroup group)
+    {
+        if (group.Pid <= 0) return false;
+        if (_watches.TryGetValue(group.Pid, out ChildLiveness.Watch? w))
+            return ChildLiveness.HasAskedToClose(w, _tail);
+        if (ChildLiveness.IsShuttingDown(_tail.For(group.Pid)?.Stage)) return true;
+        DateTime? posted = _tail.ClosePosted(group.Pid);
+        return posted.HasValue && group.StartedAt is DateTime started && posted.Value >= started;
+    }
+
+    /// <summary>Children this supervisor has already tried to force-close, so a process that refuses
+    /// to die is reported once rather than every 15 seconds.</summary>
+    private readonly HashSet<int> _forceCloseTried = new();
+
+    /// <summary>
+    /// Ends a child that has FINISHED — every model in its group has a row — and has been trying to
+    /// close for <see cref="ChildLiveness.ForceCloseGrace"/>. The user's rule (2026-11-24): kill only
+    /// what is finished or dead. Returns true when it acted.
+    /// </summary>
+    private bool ForceCloseIfFinished(RunGroup group, ChildLiveness.Watch watch)
+    {
+        if (watch.ShutdownSince == default || _forceCloseTried.Contains(group.Pid)) return false;
+        DateTime now = DateTime.Now;
+        if (now - watch.ShutdownSince < ChildLiveness.ForceCloseGrace) return false;
+
+        HashSet<string> done = TrackingCsvReader.CompletedModels(_manifest.TrackingLogPath);
+        if (!ChildLiveness.ShouldForceClose(watch, now, group.Models, done)) return false;
+
+        _forceCloseTried.Add(group.Pid);
+        string why = $"every one of its {group.Models.Count} model(s) has a result and it asked to close " +
+                     $"{(int)(now - watch.ShutdownSince).TotalMinutes} min ago, but has not exited " +
+                     $"(last trail line: '{watch.LastStage}')";
+        bool gone = RevitTerminator.Terminate(group.Pid, why);
+        Note("INFO", gone
+            ? $"pid {group.Pid} finished its models but its close was blocked (usually a Revit dialog). " +
+              "It was closed by the supervisor; nothing was lost — its results are in this log."
+            : $"pid {group.Pid} finished its models but could not be closed — it is still open.");
+        return gone;
+    }
+
+    /// <summary>
+    /// Ends any child that crashed into Autodesk's crash reporter, and closes reporter windows that
+    /// crashed children left behind. Runs before the per-group sweep, so a child ended here is found
+    /// gone straight away and takes the ordinary crash path (post-mortem, open/run-crash rule,
+    /// replacement). See <see cref="CrashReporterWatch"/>.
+    /// </summary>
+    private void SweepCrashReporters()
+    {
+        try
+        {
+            IReadOnlyList<CrashReporterWatch.Reporter> reporters = CrashReporterWatch.Probe();
+            if (reporters.Count == 0) return;
+
+            var launched = new HashSet<int>(_manifest.Rounds.SelectMany(r => r.Groups)
+                .Select(g => g.Pid).Where(p => p > 0));
+            foreach (CrashReporterWatch.Reporter r in reporters)
+            {
+                switch (CrashReporterWatch.Decide(r, launched, ChildLiveness.IsAlive))
+                {
+                    case CrashReporterWatch.Action.EndChildAndReporter:
+                        RunTrace.Mark($"supervisor: pid {r.ParentPid} crashed — Autodesk's crash reporter " +
+                                      $"(senddmp pid {r.Pid}) is waiting for a click");
+                        RevitTerminator.Terminate(r.ParentPid, "crashed; its crash reporter is showing");
+                        RevitTerminator.Terminate(r.Pid, $"crash reporter of pid {r.ParentPid}");
+                        break;
+
+                    case CrashReporterWatch.Action.EndReporter:
+                        RevitTerminator.Terminate(r.Pid,
+                            $"crash reporter left on screen by pid {r.ParentPid}, which has already exited");
+                        break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            RunTrace.Mark("crash-reporter sweep failed: " + ex.Message);
+        }
+    }
 
     /// <summary>How many times one group may have its Revit replaced within a round.</summary>
     /// <remarks>
@@ -179,50 +272,91 @@ internal sealed partial class RunSupervisor
     /// no workset configuration — and if it crashes again it is skipped with an ERROR while every other
     /// model carries on. Revit-free so the harness pins it.
     /// </summary>
-    internal static OpenCrashOutcome OpenCrashPolicy(int priorCrashesThisRun, bool knownWorkshared) =>
-        knownWorkshared ? OpenCrashOutcome.Ladder
+    /// <param name="duringOpen">False for a crash while the model was already open — an action
+    /// running on it (2.1.1.1). The workshared ladder is about how a model is OPENED, so it applies
+    /// to open crashes only; a crash inside an export gets the plain user rule: once more, then
+    /// skipped.</param>
+    internal static OpenCrashOutcome OpenCrashPolicy(int priorCrashesThisRun, bool knownWorkshared,
+        bool duringOpen = true) =>
+        duringOpen && knownWorkshared ? OpenCrashOutcome.Ladder
         : priorCrashesThisRun == 0 ? OpenCrashOutcome.Retry
         : OpenCrashOutcome.GiveUp;
 
     /// <summary>
-    /// A dead child whose last line was a model OPEN: record the crash against that model, and either
-    /// arrange its plain retry or give it up — see <see cref="OpenCrashPolicy"/>. Returns the model's
-    /// display name when it is retried (so the replacement carries it last), else null.
+    /// Which of a dead child's models it died on, and whether it died opening it. Pure, so the harness
+    /// pins it. Reads the child's last MODEL-level line (<see cref="RunTrace.Tail.LastModelLine"/>), not
+    /// its last line: a dialog or lifecycle line written after it would otherwise hide the model.
+    ///
+    /// <para>A model that already has a complete row is never blamed — a child that died while
+    /// CLOSING a finished model did not fail that model, and its next model was never started.</para>
+    /// </summary>
+    internal static (CloudModel Model, bool DuringOpen)? CrashedOn(string? lastModelLine,
+        IReadOnlyList<CloudModel> groupModels, ISet<string> completed)
+    {
+        string? field = Batch.BatchStages.ModelField(lastModelLine);
+        if (field == null) return null;
+        CloudModel? model = groupModels.FirstOrDefault(m => Batch.BatchStages.SameModel(field, m.DisplayName));
+        if (model == null || completed.Contains(model.DisplayName)) return null;
+        return (model, Batch.BatchStages.IsOpenStage(lastModelLine));
+    }
+
+    /// <summary>
+    /// A dead child: record the crash against the model it was on — opening it or running an action
+    /// on it — and either arrange its retry or give it up; see <see cref="OpenCrashPolicy"/>. Returns
+    /// the model's display name when it is retried (so the replacement carries it last), else null.
     /// </summary>
     private string? HandleOpenCrash(RunGroup group)
     {
         try
         {
+            if (AskedToClose(group)) return null;   // a finish, however abrupt — nothing crashed
+
             _watches.TryGetValue(group.Pid, out ChildLiveness.Watch? watch);
-            string? lastStage = _tail.For(group.Pid)?.Stage ?? watch?.LastStage;
-            string? name = Batch.BatchStages.OpeningModel(lastStage);
-            if (name == null) return null;
-            CloudModel? model = group.Models.FirstOrDefault(m => string.Equals(m.DisplayName, name, StringComparison.Ordinal));
-            if (model == null || model.IsLocal) return null;
+            string? lastStage = _tail.LastModelLine(group.Pid)?.Stage
+                                ?? _tail.For(group.Pid)?.Stage ?? watch?.LastStage;
+            HashSet<string> done = TrackingCsvReader.CompletedModels(_manifest.TrackingLogPath);
+            (CloudModel Model, bool DuringOpen)? hit = CrashedOn(lastStage, group.Models, done);
+            if (hit == null) return null;
+            CloudModel model = hit.Value.Model;
+            bool duringOpen = hit.Value.DuringOpen;
+            string name = model.DisplayName;
+            // A local model has no cloud open to change, but a crash INSIDE its export is still a
+            // crash on that model and gets the same once-more rule.
+            if (duringOpen && model.IsLocal) return null;
 
             string key = ModelKey.For(model);
             int prior = _manifest.OpenCrashes.TryGetValue(key, out int n) ? n : 0;
             RunManifestStore.Update(_manifest, x => x.OpenCrashes[key] = prior + 1);
-            bool workshared = Batch.CloudOpenFacts.MarkCrash(model);
+            bool workshared = duringOpen && Batch.CloudOpenFacts.MarkCrash(model);
             bool wasPlain = Batch.BatchStages.IsPlainOpenStage(lastStage);
-            RunTrace.Mark($"supervisor: pid {group.Pid} died opening {name} " +
-                          $"({(wasPlain ? "plain open" : "workset configuration")}; crash {prior + 1} this run)");
+            RunTrace.Mark(duringOpen
+                ? $"supervisor: pid {group.Pid} died opening {name} " +
+                  $"({(wasPlain ? "plain open" : "workset configuration")}; crash {prior + 1} this run)"
+                : $"supervisor: pid {group.Pid} died while working on {name} at '{lastStage}' " +
+                  $"(crash {prior + 1} this run)");
 
-            switch (OpenCrashPolicy(prior, workshared))
+            switch (OpenCrashPolicy(prior, workshared, duringOpen))
             {
                 case OpenCrashOutcome.Retry:
-                    Note("INFO", $"Revit died while opening {name}" +
-                                 (wasPlain ? " (already a plain open)" : "") +
-                                 ". It is retried once in a fresh Revit, after the other models, opened " +
-                                 "plain — no workset configuration. If that crashes too it is skipped.");
+                    Note("INFO", duringOpen
+                        ? $"Revit died while opening {name}" +
+                          (wasPlain ? " (already a plain open)" : "") +
+                          ". It is retried once in a fresh Revit, after the other models, opened " +
+                          "plain — no workset configuration. If that crashes too it is skipped."
+                        : $"Revit died while working on {name}. It is retried once in a fresh Revit, " +
+                          "after the other models. If that crashes too it is skipped.");
                     return name;
 
                 case OpenCrashOutcome.GiveUp:
                     RunManifestStore.Update(_manifest, x => { if (!x.Unrecoverable.Contains(key)) x.Unrecoverable.Add(key); });
                     RunNote.Write(_manifest.TrackingLogPath, _manifest.Name, name, "ERROR",
-                        $"skipped — Revit crashed while opening this model {prior + 1} times this run, " +
-                        "the last time in safe open (no workset configuration). The other models carried on. " +
-                        $"See {RunTrace.LogPath} and the Revit journal ('captureTryCrash') for the cause.");
+                        duringOpen
+                            ? $"skipped — Revit crashed while opening this model {prior + 1} times this run, " +
+                              "the last time in safe open (no workset configuration). The other models carried on. " +
+                              $"See {RunTrace.LogPath} and the Revit journal ('captureTryCrash') for the cause."
+                            : $"skipped — Revit crashed {prior + 1} times this run on this model, the last " +
+                              $"time at '{lastStage}'. The other models carried on. See {RunTrace.LogPath} " +
+                              "and the Revit journal ('captureTryCrash') for the cause.");
                     return null;
 
                 default:
@@ -278,9 +412,7 @@ internal sealed partial class RunSupervisor
 
             // Asked to close and then went: a finish, however abrupt. ReportUnexpectedExit applies
             // the same test before it calls anything a crash.
-            _watches.TryGetValue(group.Pid, out ChildLiveness.Watch? watch);
-            string? lastStage = _tail.For(group.Pid)?.Stage ?? watch?.LastStage;
-            if (ChildLiveness.IsShuttingDown(lastStage)) return;
+            if (AskedToClose(group)) return;
 
             if (group.RelaunchCount >= MaxRelaunchesPerGroup)
             {

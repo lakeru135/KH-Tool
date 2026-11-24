@@ -232,7 +232,7 @@ internal sealed partial class RunSupervisor
 
             _watches.TryGetValue(group.Pid, out ChildLiveness.Watch? watch);
             string? lastStage = _tail.For(group.Pid)?.Stage ?? watch?.LastStage;
-            if (ChildLiveness.IsShuttingDown(lastStage)) return;   // asked to close: a finish
+            if (AskedToClose(group)) return;   // asked to close at some point: a finish
 
             string stage = string.IsNullOrEmpty(lastStage)
                 ? "before it wrote any stage at all"

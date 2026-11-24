@@ -103,7 +103,10 @@ public sealed class ExportNwcCommand : IExternalCommand
                 DestinationFolder = inputs.DestinationFolder,
                 ProjectLogName = inputs.ProjectLogName
             },
-            chosen.Models, splitEnabled: true, action.Name, BatchCompletion.CloseDocuments);
+            chosen.Models, splitEnabled: true, action.Name, BatchCompletion.CloseDocuments,
+            // Even a set that fits one group runs in a separate, supervised Revit: a crash there
+            // cannot close this one, and the crashed model is retried once, then skipped (2.1.1.1).
+            alwaysSupervise: true);
         if (split.HasValue) return split.Value;
 
         foreach (string note in setNotes) Diagnostics.RunTrace.Mark(note);

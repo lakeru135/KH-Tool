@@ -158,6 +158,10 @@ public partial class App : IExternalApplication
         {
             try { Batch.ForeignDialogBreaker.StartShared(); }
             catch (Exception ex) { Diagnostics.RunTrace.Mark("dialog watchdog not started: " + ex.Message); }
+            // Revit's own exit questions ("Changes Not Saved", relinquish), answered only after this
+            // process has asked to close. Armed now for the same reason as the breaker above.
+            try { Schedule.ShutdownDialogAnswers.Arm(application); }
+            catch (Exception ex) { Diagnostics.RunTrace.Mark("shutdown dialog answers not armed: " + ex.Message); }
         }
 
         // Diagnostic: if launched with KHBATCH_SELFTEST=<logpath>, probe the Forma REST stack

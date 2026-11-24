@@ -208,16 +208,55 @@ public sealed class ForeignDialogBreaker : IDisposable
                 _report?.Invoke("foreign dialog is blocking this Revit: " + seen);
             }
 
-            if (!ShouldAct(first, now, Grace)) continue;
+            if (_leftAlone.Contains(hwnd)) continue;
+            if (!ShouldAct(first, now, GraceFor(announced[hwnd], Schedule.ScheduleEnvironment.IsUnattendedLaunch)))
+                continue;
 
             string description = Describe(hwnd);
             LastMessage = description;
+            bool closing = Schedule.RevitShutdown.ClosePostedByThisProcess;
+            if (!Answer(hwnd, allowCloseFallback: !closing))
+            {
+                // Nothing we may click, and this Revit has asked to quit: closing the box would be
+                // Cancel, and Cancel cancels the quit (2026-11-23 20:18, "Changes Not Saved"). Leave
+                // it; a finished child is ended by the supervisor (ChildLiveness.ForceCloseGrace).
+                _leftAlone.Add(hwnd);
+                _report?.Invoke($"foreign dialog left open after {(int)(now - first).TotalSeconds}s — this " +
+                                $"Revit has asked to close and closing the box would cancel that: {description}");
+                continue;
+            }
             _report?.Invoke($"foreign dialog answered after {(int)(now - first).TotalSeconds}s: {description}");
-            Answer(hwnd);
             ClosedCount++;
             seenAt.Remove(hwnd);
             announced.Remove(hwnd);
         }
+        _leftAlone.RemoveWhere(h => !dialogs.Contains(h));
+    }
+
+    /// <summary>Dialogs deliberately not answered (see <see cref="Sweep"/>), so each is reported once
+    /// rather than once per grace period.</summary>
+    private readonly HashSet<IntPtr> _leftAlone = new();
+
+    /// <summary>
+    /// Message boxes known to say nothing a person needs to read, and that a run would otherwise wait
+    /// <see cref="Grace"/> on. Matched against the dialog's text.
+    ///
+    /// <para>"No suitable geometry found" is the Navisworks exporter reporting an empty export, which
+    /// Export NWC already detects and reports as the model's row. MEASURED 2026-11-23 19:55–20:20: it
+    /// appeared on almost every model of the BPP set and cost 46 s each time — over five minutes per
+    /// instance spent waiting for a click that changes nothing.</para>
+    /// </summary>
+    private static readonly string[] KnownBenign = { "No suitable geometry found" };
+
+    /// <summary>How long to wait before answering a dialog with this text. Pure, for the harness.
+    /// A known-benign box is answered at once only when nobody is at this Revit; a person still gets
+    /// the full grace to read it.</summary>
+    public static TimeSpan GraceFor(string description, bool unattended)
+    {
+        if (unattended && !string.IsNullOrEmpty(description) &&
+            KnownBenign.Any(t => description.IndexOf(t, StringComparison.OrdinalIgnoreCase) >= 0))
+            return TimeSpan.Zero;
+        return Grace;
     }
 
     /// <summary>
@@ -230,7 +269,9 @@ public sealed class ForeignDialogBreaker : IDisposable
     /// version of this method found the box, read its text, and left it on screen for the full
     /// 30-second timeout, which is precisely the failure this class exists to prevent.</para>
     /// </summary>
-    private static void Answer(IntPtr dialog)
+    /// <returns>False only when no affirmative button was found and <paramref name="allowCloseFallback"/>
+    /// forbade closing the window — the dialog is then still on screen.</returns>
+    private static bool Answer(IntPtr dialog, bool allowCloseFallback = true)
     {
         IntPtr button = IntPtr.Zero;
         try
@@ -257,11 +298,13 @@ public sealed class ForeignDialogBreaker : IDisposable
         if (button != IntPtr.Zero)
         {
             PostMessage(button, BM_CLICK, IntPtr.Zero, IntPtr.Zero);
-            return;
+            return true;
         }
+        if (!allowCloseFallback) return false;
         // No button we recognise (a localised build, or a dialog with only a title bar X): closing
         // the window is the only remaining way to let the blocked thread continue.
         PostMessage(dialog, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+        return true;
     }
 
     /// <summary>The "keep going" answers, in the order a message box lays them out. Deliberately

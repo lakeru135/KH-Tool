@@ -270,6 +270,13 @@ public static partial class ScheduledRunner
         !string.IsNullOrWhiteSpace(job.InteropChecksetPath) &&
         job.ActionNames.Contains(BatchInteropAction.DisplayName);
 
+    /// <summary>Whether <paramref name="job"/> runs Export NWC or Export IFC + Data — which, since
+    /// 2.1.1.1, also always get a supervised child Revit, so a crash during an export is retried
+    /// once and skipped instead of ending the scheduled run.</summary>
+    private static bool RunsExport(ScheduledJob job) =>
+        job.ActionNames.Contains(ExportNwcAction.DisplayName) ||
+        job.ActionNames.Contains(ExportIfcDataAction.DisplayName);
+
     private static bool CanSplit(ScheduledJob job, IReadOnlyList<CloudModel> hosts,
         string destFolder, string projectLog, string revitVersionNumber)
     {

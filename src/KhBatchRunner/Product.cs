@@ -38,7 +38,7 @@ internal static class Product
 #endif
 
     // One version line for every edition: the public repository starts at 2.0.0.
-    public const string Version = "2.1.1.0";
+    public const string Version = "2.1.1.1";
     public const string Publisher = "Kanghun BIM";
 
     /// <summary>
@@ -131,6 +131,18 @@ internal static class Product
         "• Setting: Model Set, Batch Run, Sync View.";
 #else
     public const string Changelog =
+        "KH-Tool (2.1.1.1, review build):\n" +
+        "• Runs finish on their own. A Revit that finished its models but was held open by Revit's " +
+        "\"Changes Not Saved\" box now closes: the box is answered \"Do not save\" once the run is done, " +
+        "and a finished instance still open after 3 minutes is closed by the supervisor. A Revit that " +
+        "crashed into Autodesk's error report is closed and its model retried once; the error-report " +
+        "window is closed too. A Revit that is still working is never closed.\n" +
+        "• A crash while exporting (not only while opening) retries that model once in a fresh Revit, " +
+        "then skips it with an ERROR row so the rest of the run carries on.\n" +
+        "• Export NWC and Export IFC + Data always run in a separate Revit, even for a few models, so " +
+        "a crash can no longer close the Revit you started them from.\n" +
+        "• Navisworks' \"No suitable geometry found\" box is answered at once in an unattended run " +
+        "instead of after 45 seconds.\n\n" +
         "KH-Tool (2.1.1):\n" +
         "• Export NWC and Export IFC + Data: a Coordinates dropdown replaces the coordinates " +
         "checkbox, with a new choice, \"Project Base Point at 0,0,0\" (project north up, Z 0 = PBP " +
