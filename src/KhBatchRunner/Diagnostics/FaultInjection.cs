@@ -27,6 +27,10 @@ internal static class FaultInjection
     {
         get
         {
+#if EDITION_DRW
+            // DRW Helper has no AI Bridge, hence no dev-install marker: injection is always off.
+            return null;
+#else
             try
             {
                 if (!Mcp.McpBridge.DevAutoStart) return null;
@@ -34,6 +38,7 @@ internal static class FaultInjection
                 return string.IsNullOrWhiteSpace(s) ? null : s!.Trim();
             }
             catch { return null; }
+#endif
         }
     }
 
