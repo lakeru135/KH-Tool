@@ -108,7 +108,14 @@ internal sealed partial class RunSupervisor
                 FillFreeSlots();                    // start queued groups as running ones exit
                 if (!RoundFinished()) continue;
 
-                if (!StartNextRoundIfNeeded()) break;
+                if (!StartNextRoundIfNeeded())
+                {
+                    // Before "finished": a child that is done but whose close is blocked would
+                    // otherwise outlive the supervisor that is the only thing able to end it
+                    // (live test B, 2026-11-25). A stopped run keeps its workers for inspection.
+                    if (_manifest.State != RunState.Stopped) DrainExitingChildren();
+                    break;
+                }
                 AdoptCurrentRound();
                 if (_showRoundNotifications) AnnounceRound(_manifest.RoundNumber);
             }

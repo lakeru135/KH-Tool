@@ -63,8 +63,10 @@ namespace KhBatchRunner.Schedule;
 internal static class ChildLiveness
 {
     /// <summary>
-    /// All signals flat for this long ⇒ needs attention. This now stops launches and retains the
-    /// worker for inspection; it never terminates Revit.
+    /// All signals flat for this long ⇒ needs attention. This sets the group aside and retains the
+    /// worker for inspection; it never terminates Revit. (The only Revits the supervisor ends are
+    /// finished or already crashed ones — see <see cref="ForceCloseGrace"/> and
+    /// <see cref="CrashReporterWatch"/>.)
     ///
     /// Overridable with <c>KHBATCH_STALL_GRACE_SEC</c>. These thresholds are reasoned from model
     /// size and link speed rather than measured on any particular site, so an environment where
@@ -234,6 +236,57 @@ internal static class ChildLiveness
     public static bool IsShuttingDown(string? stage) =>
         !string.IsNullOrEmpty(stage) &&
         stage!.IndexOf(RevitShutdown.ClosePostedMark, StringComparison.Ordinal) >= 0;
+
+    /// <summary>
+    /// Whether this child has asked to close at any point — its latest line says so, the trail saw
+    /// it say so on ANY line since it was launched, or an earlier poll already decided it was
+    /// closing. The last of the three is what makes the answer sticky.
+    ///
+    /// <para>The launch-time floor matters: <see cref="RunTrace.Tail"/> reads the whole trail, which
+    /// spans weeks of runs, and Windows reuses process ids. A close posted by some earlier process
+    /// with the same pid must not make a freshly launched child look finished.</para>
+    /// </summary>
+    public static bool HasAskedToClose(Watch watch, RunTrace.Tail? tail)
+    {
+        if (watch.ShutdownSince != default) return true;
+        if (IsShuttingDown(watch.LastStage)) return true;
+        DateTime? posted = tail?.ClosePosted(watch.Pid);
+        return posted.HasValue && posted.Value >= watch.StartedAt;
+    }
+
+    /// <summary>
+    /// How long a child that has FINISHED — every model in its group has a complete row — may sit
+    /// after asking to close before the supervisor ends the process itself. Overridable with
+    /// <c>KHBATCH_FORCE_CLOSE_SEC</c>.
+    ///
+    /// <para>This is the one exception to "the supervisor never terminates Revit", and it is the
+    /// user's rule (2026-11-24): kill only a Revit that is finished or already dead, never one that
+    /// is working. A finished child has nothing left to lose — its results are logged, sync (if any)
+    /// already ran, and a detached or no-sync document is discarded either way. MEASURED 2026-11-23
+    /// 20:18: three children finished all their models, then Revit's own "Changes Not Saved" box
+    /// cancelled their close, and the user had to close all three by hand the next morning.</para>
+    ///
+    /// <para>Three minutes, against the 30-minute <see cref="ShutdownGrace"/>: a clean exit takes
+    /// seconds (11-24: "normal close posted" to gone in under 5 s), and this clock only runs once
+    /// every row is in, so the long grace's caution — a big model still unloading — does not
+    /// apply.</para>
+    /// </summary>
+    public static readonly TimeSpan ForceCloseGrace =
+        EnvSpan("KHBATCH_FORCE_CLOSE_SEC", TimeSpan.FromSeconds(10), TimeSpan.FromHours(1),
+                TimeSpan.FromMinutes(3));
+
+    /// <summary>
+    /// Whether a closing child should now be ended by the supervisor. Pure, so the harness pins the
+    /// one rule that lets this code kill a Revit: it asked to close, it has been at it for
+    /// <see cref="ForceCloseGrace"/>, and nothing it was given is still without a row.
+    /// </summary>
+    internal static bool ShouldForceClose(Watch watch, DateTime now, IReadOnlyList<CloudModel> groupModels,
+        ISet<string> completed)
+    {
+        if (watch.ShutdownSince == default) return false;
+        if (now - watch.ShutdownSince < ForceCloseGrace) return false;
+        return groupModels.Count > 0 && groupModels.All(m => completed.Contains(m.DisplayName));
+    }
 
     /// <summary>
     /// Whether the child's last trail line says it is INSIDE A DOCUMENT OPEN
@@ -431,7 +484,11 @@ internal static class ChildLiveness
         // spent its whole allowance working and then asked to close is not "over ceiling" in any
         // sense that should stop a run, and a group of ten models can easily reach its close with
         // the instance clock nearly spent.
-        if (IsShuttingDown(watch.LastStage))
+        //
+        // STICKY since 2.1.1.1: once a child has asked to close it stays "closing", whatever it
+        // writes afterwards. See RunTrace.Tail.ClosePosted for the 2026-11-23 run where a dialog line
+        // written four seconds after the close turned three finished Revits into "wedged" ones.
+        if (HasAskedToClose(watch, tail))
         {
             if (watch.ShutdownSince == default) watch.ShutdownSince = now;
             TimeSpan closing = now - watch.ShutdownSince;

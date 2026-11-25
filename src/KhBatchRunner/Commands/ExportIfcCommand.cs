@@ -81,7 +81,9 @@ public sealed class ExportIfcCommand : IExternalCommand
                 DestinationFolder = inputs.DestinationFolder,
                 ProjectLogName = inputs.ProjectLogName
             },
-            chosen.Models, splitEnabled: true, action.Name, BatchCompletion.CloseDocuments);
+            chosen.Models, splitEnabled: true, action.Name, BatchCompletion.CloseDocuments,
+            // As Export NWC: always a separate, supervised Revit, so a crash cannot close this one.
+            alwaysSupervise: true);
         if (split.HasValue) return split.Value;
 
         foreach (string note in setNotes) Diagnostics.RunTrace.Mark(note);

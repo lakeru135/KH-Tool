@@ -288,9 +288,11 @@ public static partial class ScheduledRunner
     private static void QuitRevit()
     {
         // One shared implementation for scheduled, interactive, broker, and diagnostic shutdown.
-        // It posts WM_CLOSE only. If a modal dialog or genuine hang blocks that request, Revit is
-        // intentionally left open for inspection; there is no timeout that terminates it.
+        // It posts WM_CLOSE only. Revit's own exit questions are answered by ShutdownDialogAnswers;
+        // if something else still blocks the close, the SUPERVISOR ends this process once every one
+        // of its models has a row (ChildLiveness.ForceCloseGrace) — this process never ends itself.
         RevitShutdown.RequestCurrent("scheduled/headless batch complete");
+        Diagnostics.FaultInjection.AfterClosePosted();   // dev installs only
     }
 
     /// <summary>

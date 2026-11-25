@@ -191,6 +191,32 @@ internal static class RunTrace
 
         public StageMark? For(int pid) => _last.TryGetValue(pid, out StageMark? m) ? m : null;
 
+        /// <summary>
+        /// When <paramref name="pid"/> wrote <see cref="Schedule.RevitShutdown.ClosePostedMark"/>,
+        /// or null if it never has. Remembered from ANY consumed line, not only the latest one.
+        ///
+        /// <para><b>Why this is not just <see cref="For"/>.</b> <see cref="For"/> keeps the LAST line
+        /// per pid, and a poll reads every line written in the last 15 seconds. MEASURED 2026-11-23
+        /// 20:18: three children posted their close and, four seconds later, wrote "foreign dialog is
+        /// blocking this Revit: Changes Not Saved". Both lines fell in one poll, so the supervisor only
+        /// ever saw the dialog line, never learned the children had finished, called each of them
+        /// wedged ten minutes later and left all three open. The fact "this instance asked to close"
+        /// must not be overwritten by whatever the instance says next.</para>
+        /// </summary>
+        public DateTime? ClosePosted(int pid) =>
+            _closePosted.TryGetValue(pid, out DateTime at) ? at : null;
+
+        private readonly Dictionary<int, DateTime> _closePosted = new();
+
+        /// <summary>
+        /// The latest MODEL-level line (<c>action | model | stage</c>) per pid — what the child was
+        /// doing to which model, unaffected by the dialog and lifecycle lines that may follow it. The
+        /// supervisor uses it to say which model a crashed child was on.
+        /// </summary>
+        public StageMark? LastModelLine(int pid) => _lastModel.TryGetValue(pid, out StageMark? m) ? m : null;
+
+        private readonly Dictionary<int, StageMark> _lastModel = new();
+
         /// <summary>Consumes newly appended lines. Never throws: a tick that can't read the file
         /// simply reports no new marks, and the next tick picks up where this one left off.</summary>
         public void Poll()
@@ -226,7 +252,12 @@ internal static class RunTrace
             if (!int.TryParse(line.Substring(idStart, idEnd - idStart), out int pid)) return;
 
             if (!DateTime.TryParse(line.Substring(0, p), out DateTime at)) at = DateTime.Now;
-            _last[pid] = new StageMark { Pid = pid, Stage = line.Substring(idEnd + 1), At = at };
+            string stage = line.Substring(idEnd + 1);
+            var mark = new StageMark { Pid = pid, Stage = stage, At = at };
+            _last[pid] = mark;
+            if (Batch.BatchStages.ModelField(stage) != null) _lastModel[pid] = mark;
+            if (!_closePosted.ContainsKey(pid) && Schedule.ChildLiveness.IsShuttingDown(stage))
+                _closePosted[pid] = at;
         }
     }
 

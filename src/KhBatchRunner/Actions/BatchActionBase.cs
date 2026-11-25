@@ -34,6 +34,9 @@ public abstract class BatchActionBase : IBatchAction
     /// <summary>Set by the engine before ConfigureOutput; see <see cref="IBatchAction.RunStamp"/>.</summary>
     public DateTime? RunStamp { get; set; }
 
+    /// <summary>Set by the engine before each model; see <see cref="IBatchAction.CurrentModelName"/>.</summary>
+    public string? CurrentModelName { get; set; }
+
     // Only actions with a run-level artifact (e.g. a cross-model matrix) override this.
     public virtual void OnRunComplete() { }
 

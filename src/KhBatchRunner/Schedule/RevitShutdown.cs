@@ -8,7 +8,9 @@ namespace KhBatchRunner.Schedule;
 /// <summary>
 /// Requests a normal Revit shutdown without ever terminating the process.
 /// Revit has no public API Quit method, but its top-level Windows window honours WM_CLOSE.
-/// If a dialog or genuine hang blocks that close, Revit remains open for inspection.
+/// If a dialog or genuine hang blocks that close, this class does nothing more. Since 2.1.1.1 a
+/// supervised child that has FINISHED its models is ended by <see cref="RevitTerminator"/> instead
+/// of waiting for a person; a Revit that is still working is never ended.
 /// </summary>
 internal static class RevitShutdown
 {
@@ -22,12 +24,22 @@ internal static class RevitShutdown
     /// </summary>
     public const string ClosePostedMark = "normal close posted";
 
+    /// <summary>
+    /// True once THIS process has asked itself to close. Read by
+    /// <see cref="ShutdownDialogAnswers"/>, which answers Revit's exit questions only from then on,
+    /// and by <c>ForeignDialogBreaker</c>, which must not then close a dialog it cannot read, because
+    /// closing Revit's "Changes Not Saved" box is Cancel — and Cancel cancels the quit
+    /// (2026-11-23 20:18).
+    /// </summary>
+    public static bool ClosePostedByThisProcess { get; private set; }
+
     /// <summary>Posts a close after the caller returns to Revit's message loop.</summary>
     public static void RequestCurrent(string reason)
     {
         int pid;
         try { pid = Process.GetCurrentProcess().Id; }
         catch { return; }
+        ClosePostedByThisProcess = true;
 
         try
         {
@@ -61,7 +73,13 @@ internal static class RevitShutdown
             if (process.HasExited) return true;
             process.Refresh();
 
-            bool requested = process.CloseMainWindow();
+            // Revit's own frame first. Process.CloseMainWindow targets whatever .NET calls the main
+            // window at that instant — during a run that is KH-Tool's "Batch progress" window — and
+            // on 2026-11-25 12:57 (live test F) the close went to it: the progress window shut,
+            // Revit stayed on Home for seven minutes, and nothing asked again.
+            bool requested = PostCloseToRevitFrame(pid);
+            if (!requested)
+                requested = process.CloseMainWindow();
             if (!requested)
                 requested = PostCloseToTopLevelWindows(pid);
 
@@ -80,6 +98,43 @@ internal static class RevitShutdown
             return false;
         }
     }
+
+    /// <summary>
+    /// WM_CLOSE to the process's visible, unowned top-level window titled "Autodesk Revit…" — the
+    /// frame whose close quits Revit. False when there is none (not yet shown, or not Revit).
+    /// </summary>
+    private static bool PostCloseToRevitFrame(int pid)
+    {
+        bool posted = false;
+        EnumWindows((hwnd, _) =>
+        {
+            GetWindowThreadProcessId(hwnd, out uint windowPid);
+            if (windowPid == (uint)pid && GetWindow(hwnd, GW_OWNER) == IntPtr.Zero &&
+                IsWindowVisible(hwnd) && IsRevitFrameTitle(WindowTitle(hwnd)))
+                posted |= PostMessage(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+            return true;
+        }, IntPtr.Zero);
+        return posted;
+    }
+
+    /// <summary>Revit's frame title: "Autodesk Revit 2026.5 - [Home]", "Autodesk Revit 2025.4 - [model]"…
+    /// Pure, for the harness.</summary>
+    internal static bool IsRevitFrameTitle(string? title) =>
+        title != null && title.StartsWith("Autodesk Revit", StringComparison.OrdinalIgnoreCase);
+
+    private static string WindowTitle(IntPtr hwnd)
+    {
+        var text = new System.Text.StringBuilder(512);
+        GetWindowText(hwnd, text, text.Capacity);
+        return text.ToString();
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr hwnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hwnd, System.Text.StringBuilder text, int maxCount);
 
     private static bool PostCloseToTopLevelWindows(int pid)
     {

@@ -87,14 +87,36 @@ internal static class BatchStages
     /// is not the only name that contains <c>ARC-002</c>, and the supervisor acts on this answer by
     /// changing how that one model is opened next.</para>
     /// </summary>
-    public static string? OpeningModel(string? stage)
+    public static string? OpeningModel(string? stage) => IsOpenStage(stage) ? ModelField(stage) : null;
+
+    /// <summary>
+    /// The middle field of any <c>"&lt;action&gt; | &lt;model&gt; | &lt;stage&gt;"</c> line, or null when the
+    /// line does not have three fields. Not every model line spells the model the same way — the
+    /// engine writes <c>BPP-X.rvt</c>, an action's own progress line may write <c>BPP-X</c> — so
+    /// callers compare with <see cref="SameModel"/>.
+    /// </summary>
+    public static string? ModelField(string? stage)
     {
-        if (!IsOpenStage(stage)) return null;
+        if (string.IsNullOrEmpty(stage)) return null;
         int first = stage!.IndexOf(" | ", StringComparison.Ordinal);
         int last = stage.LastIndexOf(" | ", StringComparison.Ordinal);
         if (first < 0 || last <= first) return null;
         string model = stage.Substring(first + 3, last - first - 3).Trim();
         return model.Length > 0 ? model : null;
+    }
+
+    /// <summary>Whether a trail line's model field names <paramref name="displayName"/>, with or
+    /// without its <c>.rvt</c>. Exact otherwise — see <see cref="OpeningModel"/> for why a substring
+    /// match is not good enough when the supervisor acts on the answer.</summary>
+    public static bool SameModel(string? field, string displayName)
+    {
+        if (string.IsNullOrEmpty(field) || string.IsNullOrEmpty(displayName)) return false;
+        if (string.Equals(field, displayName, StringComparison.Ordinal)) return true;
+        const string ext = ".rvt";
+        string bare = displayName.EndsWith(ext, StringComparison.OrdinalIgnoreCase)
+            ? displayName.Substring(0, displayName.Length - ext.Length)
+            : displayName;
+        return string.Equals(field, bare, StringComparison.Ordinal);
     }
 
     /// <summary>The action itself running, on a document this pass opened.</summary>

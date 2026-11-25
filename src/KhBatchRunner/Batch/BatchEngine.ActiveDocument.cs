@@ -68,7 +68,7 @@ public sealed partial class BatchEngine
 
             Trace(model, BatchStages.ActionRun);
             // One locked write for the whole model, not one per row — see DetailCsvLogger.LogMany.
-            state.Detail.LogMany(model.DisplayName, _action.RunDetailRows(_uiApp, doc));
+            state.Detail.LogMany(model.DisplayName, RunDetailRows(model, doc));
             Trace(model, "ran");
 
             Trace(model, "persist");
@@ -120,7 +120,7 @@ public sealed partial class BatchEngine
         {
             Trace(model, BatchStages.ActionRunReusing);
             // One locked write for the whole model, not one per row — see DetailCsvLogger.LogMany.
-            state.Detail.LogMany(model.DisplayName, _action.RunDetailRows(_uiApp, doc));
+            state.Detail.LogMany(model.DisplayName, RunDetailRows(model, doc));
             Trace(model, "ran");
 
             Trace(model, "persist");

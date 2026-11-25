@@ -125,24 +125,37 @@ public sealed class BatchRunCommand : IExternalCommand
             groupSize = 0;
         }
 
-        if (groupSize > 0 && combined.Models.Count > groupSize)
+        // An export run always goes to a separate, supervised Revit — even a set small enough for one
+        // group — so a crash in it can never take THIS Revit and the batch with it, and a model that
+        // crashes Revit is retried once, then skipped (2.1.1.1, the Batch Interop rule).
+        bool hasExport = window.SelectedRunItems.Any(t => !t.IsScriptSet &&
+            (t.Name == ExportNwcAction.DisplayName || t.Name == ExportIfcDataAction.DisplayName));
+        if (groupSize > 0)
+            groupSize = Schedule.InteractiveSplit.SupervisedGroupSize(combined.Models.Count, groupSize, hasExport);
+        bool realSplit = groupSize > 0 && combined.Models.Count > groupSize;
+
+        if (groupSize > 0 && (realSplit || hasExport))
         {
             int groups = ChunkLauncher.GroupCount(combined.Models.Count, groupSize);
             bool hasPublish = window.SelectedRunItems.Any(t =>
                 t.Name == InitiateToFormaAction.DisplayName || t.Name == CutModelAction.DisplayName);
-            var confirm = new TaskDialog("Batch Run — parallel groups")
+            // Only a REAL split asks first; a single supervised export Revit is just where it runs.
+            if (realSplit)
             {
-                MainInstruction = $"Run {combined.Models.Count} models as {groups} group(s) of up to {groupSize}?",
-                MainContent =
-                    "Each group opens in its own Revit instance and closes when it finishes. " +
-                    "Concurrency: " + Schedule.InstanceBudget.Describe(combined.Models) + "." +
-                    (hasPublish ? "\n\nNOTE: this run publishes NEW cloud models (Initiate / Cut model)." : "") +
-                    "\n\nContinue?",
-                CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
-                DefaultButton = TaskDialogResult.No
-            };
-            if (confirm.Show() != TaskDialogResult.Yes)
-                return Result.Cancelled;
+                var confirm = new TaskDialog("Batch Run — parallel groups")
+                {
+                    MainInstruction = $"Run {combined.Models.Count} models as {groups} group(s) of up to {groupSize}?",
+                    MainContent =
+                        "Each group opens in its own Revit instance and closes when it finishes. " +
+                        "Concurrency: " + Schedule.InstanceBudget.Describe(combined.Models) + "." +
+                        (hasPublish ? "\n\nNOTE: this run publishes NEW cloud models (Initiate / Cut model)." : "") +
+                        "\n\nContinue?",
+                    CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
+                    DefaultButton = TaskDialogResult.No
+                };
+                if (confirm.Show() != TaskDialogResult.Yes)
+                    return Result.Cancelled;
+            }
 
             var baseJob = new ScheduledJob
             {

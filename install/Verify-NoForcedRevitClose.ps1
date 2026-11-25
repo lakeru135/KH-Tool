@@ -20,6 +20,15 @@
 
   Neither is Revit, and the rule that matters - never force-close Revit, because a live model may
   hold unsaved work - is untouched.
+
+    3. Schedule\RevitTerminator.cs / finishedOrCrashed.Kill() - since 2.1.1.1, by the user's decision
+       of 2026-11-24, the supervisor may end a child Revit that is FINISHED (every model has a row
+       and its close is blocked, usually by Revit's "Changes Not Saved" box) or ALREADY CRASHED
+       (Autodesk's crash reporter is up for it). Nothing in either holds unsaved work the job wanted:
+       its results are logged and batch opens are detached / no-sync. A WORKING Revit is still never
+       ended. On 2026-11-23 three finished children sat open until the user closed them by hand.
+       The callers that decide are ChildLiveness.ShouldForceClose and CrashReporterWatch.Decide,
+       both pinned by tools\LivenessSim. Keyed to the variable name in that one file, like 1-1b.
 #>
 param()
 
@@ -65,7 +74,12 @@ $violations = foreach ($file in $files) {
         $isLauncherHelper =
             $file.FullName.EndsWith("\InstallerCommon.iss", [StringComparison]::OrdinalIgnoreCase) -and
             $hit.Line -match 'KhBatchLauncher\.exe'
-        if (-not ($isNotificationHelper -or $isToastHelper -or $isToastSweeper -or $isLauncherHelper)) {
+        # Allowance 3: the supervisor's one termination path — see the header. Same file+variable key.
+        $isFinishedOrCrashedChild =
+            $file.FullName.EndsWith("\Schedule\RevitTerminator.cs", [StringComparison]::OrdinalIgnoreCase) -and
+            $hit.Line -match 'finishedOrCrashed\.Kill\s*\('
+        if (-not ($isNotificationHelper -or $isToastHelper -or $isToastSweeper -or $isLauncherHelper -or
+                  $isFinishedOrCrashedChild)) {
             [pscustomobject]@{
                 File = $file.FullName
                 Line = $hit.LineNumber
