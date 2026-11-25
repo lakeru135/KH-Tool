@@ -38,7 +38,7 @@ internal static class Product
 #endif
 
     // One version line for every edition: the public repository starts at 2.0.0.
-    public const string Version = "2.1.1.1";
+    public const string Version = "2.1.2.0";
     public const string Publisher = "Kanghun BIM";
 
     /// <summary>
@@ -97,7 +97,7 @@ internal static class Product
 
     private static DateTime ResolveBuiltInExpiryUtc()
     {
-        var fallback = new DateTime(2027, 2, 22, 0, 0, 0, DateTimeKind.Utc);   // 2.1.1.0: 90 days from 2026-11-24
+        var fallback = new DateTime(2027, 2, 23, 0, 0, 0, DateTimeKind.Utc);   // 2.1.2.0: 90 days from 2026-11-25
         try
         {
             foreach (var attr in typeof(Product).Assembly
@@ -118,6 +118,10 @@ internal static class Product
     /// <summary>Short "what's new" list shown on the About dialog. Keep the newest at the top.</summary>
 #if EDITION_DRW
     public const string Changelog =
+        "DRW Helper (2.1.2):\n" +
+        "• Batch Run finishes on its own: a Revit that finished but was held open, or crashed, is " +
+        "closed, and Autodesk's error-report window with it.\n" +
+        "• Version kept in step with KH-Tool 2.1.2; the DRW tools are otherwise unchanged.\n\n" +
         "DRW Helper (2.1.1):\n" +
         "• Adds a build for Revit 2027.\n" +
         "• Version kept in step with KH-Tool 2.1.1; the DRW tools are otherwise unchanged.\n\n" +
@@ -131,16 +135,22 @@ internal static class Product
         "• Setting: Model Set, Batch Run, Sync View.";
 #else
     public const string Changelog =
-        "KH-Tool (2.1.1.1, review build):\n" +
+        "KH-Tool (2.1.2):\n" +
         "• Runs finish on their own. A Revit that finished its models but was held open by Revit's " +
         "\"Changes Not Saved\" box now closes: the box is answered \"Do not save\" once the run is done, " +
-        "and a finished instance still open after 3 minutes is closed by the supervisor. A Revit that " +
-        "crashed into Autodesk's error report is closed and its model retried once; the error-report " +
-        "window is closed too. A Revit that is still working is never closed.\n" +
+        "and a finished instance still open after 3 minutes is closed by the supervisor, which waits " +
+        "for it before the run ends. A Revit that crashed into Autodesk's error report is closed and " +
+        "its model retried once, and the \"Revit Error Report\" window is closed too. A Revit that is " +
+        "still working is never closed.\n" +
         "• A crash while exporting (not only while opening) retries that model once in a fresh Revit, " +
         "then skips it with an ERROR row so the rest of the run carries on.\n" +
+        "• Export NWC and Export IFC + Data name each file after the model's name in the model set. A " +
+        "model copied and renamed in Forma keeps its old title inside the file, and two such models " +
+        "used to write over each other's NWC and IFC while both reported OK.\n" +
         "• Export NWC and Export IFC + Data always run in a separate Revit, even for a few models, so " +
         "a crash can no longer close the Revit you started them from.\n" +
+        "• The batch's own Revit closes reliably at the end of a scheduled run; the close no longer " +
+        "goes to the Batch progress window by mistake.\n" +
         "• Navisworks' \"No suitable geometry found\" box is answered at once in an unattended run " +
         "instead of after 45 seconds.\n\n" +
         "KH-Tool (2.1.1):\n" +

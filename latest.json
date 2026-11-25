@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.1.1.0",
+  "latestVersion": "2.1.2.0",
   "downloadNote": "Download the installer from https://github.com/lakeru135/KH-Tool/releases/latest",
-  "allowedUntil": "2027-02-22",
+  "allowedUntil": "2027-02-23",
   "minVersion": null,
   "versionExpiry": {},
-  "message": "KH-Tool 2.1.1 adds \"Project Base Point at 0,0,0\" coordinates to Export NWC and Export IFC + Data, Revit 2027, running the exports on the open model, IFC quantities, and dialogs that keep fitting their content at every display scale."
+  "message": "KH-Tool 2.1.2 makes unattended Export NWC and Export IFC + Data runs finish on their own: a Revit that finished or crashed is closed, along with Autodesk's error-report window, and each export file is named after its model in the model set."
 }
