@@ -301,7 +301,7 @@ public sealed partial class BatchEngine
             var timer = System.Diagnostics.Stopwatch.StartNew();
             // One locked write for the whole model, not one per row — see DetailCsvLogger.LogMany.
             using (Diagnostics.PhaseTimings.Time("run"))
-                state.Detail.LogMany(model.DisplayName, _action.RunDetailRows(_uiApp, doc));
+                state.Detail.LogMany(model.DisplayName, RunDetailRows(model, doc));
             Trace(model, $"ran in {timer.ElapsedMilliseconds} ms");
 
             Trace(model, "persist");

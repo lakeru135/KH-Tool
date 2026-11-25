@@ -126,7 +126,9 @@ public sealed class ExportIfcDataAction : BatchActionBase
         UIApplication uiApp, Document doc)
     {
         _note = "";
-        string modelName = ModelFileName(doc.Title);
+        // The set's name, not the title: a model renamed in ACC keeps its old title (see
+        // IBatchAction.CurrentModelName). The title is only the fallback outside a batch.
+        string modelName = ModelFileName(string.IsNullOrWhiteSpace(CurrentModelName) ? doc.Title : CurrentModelName!);
         string folderName = UniqueFolder(SafeFileName(modelName));
         string folder = Path.Combine(_runFolder, folderName);
         var entry = new ManifestModel { Name = modelName, Folder = folder, Status = "failed" };

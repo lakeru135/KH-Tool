@@ -266,7 +266,9 @@ public sealed class ExportNwcAction : BatchActionBase
         UIApplication uiApp, Document doc)
     {
         _note = "";
-        string modelName = ModelFileName(doc.Title);
+        // The set's name, not the title: a model renamed in ACC keeps its old title (see
+        // IBatchAction.CurrentModelName). The title is only the fallback outside a batch.
+        string modelName = ModelFileName(string.IsNullOrWhiteSpace(CurrentModelName) ? doc.Title : CurrentModelName!);
 
         // Recording which worksets held nothing but links used to happen here, before the export,
         // while this run's worksets were still loaded. Since 1.4.3 the ENGINE does it for every

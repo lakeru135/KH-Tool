@@ -67,6 +67,17 @@ public interface IBatchAction
     DateTime? RunStamp { get; set; }
 
     /// <summary>
+    /// The batch's name for the model about to run — its name in the model set (the ACC file
+    /// name) — set by the engine before each <see cref="RunDetailRows"/>. Null outside a batch.
+    ///
+    /// <para>Actions that name FILES after the model use this, not <c>Document.Title</c>. A cloud
+    /// model copied and renamed in ACC keeps its old title inside the file: on 2026-11-25 (live test
+    /// C) <c>BPP-NKE-M3-AR-WTP_AUX</c> reported "exported" while writing <c>BPP-NKE-M3-AR-WTP.nwc</c>
+    /// over the real WTP export, and CS-WTP_AUX's output was overwritten the other way round.</para>
+    /// </summary>
+    string? CurrentModelName { get; set; }
+
+    /// <summary>
     /// Called once by <see cref="Batch.BatchEngine.FinalizeRun"/> after the LAST model of a run.
     /// An action that produces a run-level artifact across all the run's models — e.g. the
     /// Phase/Workset/Design-Option matrix workbook — writes it here. Default is a no-op.

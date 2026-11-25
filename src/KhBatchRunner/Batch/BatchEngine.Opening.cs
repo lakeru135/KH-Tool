@@ -444,6 +444,17 @@ public sealed partial class BatchEngine
     private void Trace(CloudModel model, string stage) =>
         Diagnostics.RunTrace.Mark($"{_action.Name} | {model.DisplayName} | {stage}");
 
+    /// <summary>
+    /// Runs the action on one model, first telling it which model this is by the SET's name — the
+    /// only name a file may be called after (see <see cref="Actions.IBatchAction.CurrentModelName"/>).
+    /// Every engine path calls the action through here, so none can skip it.
+    /// </summary>
+    private IReadOnlyList<IReadOnlyDictionary<string, string>> RunDetailRows(CloudModel model, Document doc)
+    {
+        _action.CurrentModelName = model.DisplayName;
+        return _action.RunDetailRows(_uiApp, doc);
+    }
+
     private static void CloseWithoutSaving(Document? doc)
     {
         // Close the just-processed background document to free memory before the next one opens.
