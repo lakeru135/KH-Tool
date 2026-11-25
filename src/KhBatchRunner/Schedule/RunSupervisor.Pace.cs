@@ -181,6 +181,77 @@ internal sealed partial class RunSupervisor
     }
 
     /// <summary>
+    /// Runs once the run is otherwise over: keeps policing every child that has asked to close but
+    /// is still alive, so <see cref="ForceCloseIfFinished"/> gets its chance before the supervisor
+    /// ends. Bounded by <see cref="DrainLimit"/>; a child still there after that is reported, not
+    /// waited for.
+    ///
+    /// <para>Measured on live test B (2026-11-25): with every model accounted for, the run ended
+    /// SEVEN SECONDS after the last child posted its close — <see cref="RoundFinished"/> rightly
+    /// counts a closing child as done — so the 3-minute force-close never ran and the blocked Revit
+    /// stayed on screen, which is the 2026-11-23 symptom this release exists to remove.</para>
+    /// </summary>
+    private void DrainExitingChildren()
+    {
+        DateTime deadline = DateTime.Now + DrainLimit;
+        bool announced = false;
+        while (true)
+        {
+            List<RunGroup> exiting = _manifest.Rounds.SelectMany(r => r.Groups)
+                .Where(g => g.Pid > 0 && AwaitingExit(g, ChildLiveness.IsAlive(g.Pid), AskedToClose(g)))
+                .Where(g => !_forceCloseTried.Contains(g.Pid))
+                .ToList();
+            if (exiting.Count == 0) return;
+
+            if (DateTime.Now >= deadline)
+            {
+                foreach (RunGroup g in exiting)
+                {
+                    RunTrace.Mark($"supervisor: pid {g.Pid} asked to close but is still open after " +
+                                  $"{(int)DrainLimit.TotalMinutes} min — not waiting longer");
+                    Note("INFO", $"pid {g.Pid} finished and asked to close, but Revit has not exited. " +
+                                 "Its results are in this log; close that Revit when convenient.");
+                }
+                return;
+            }
+
+            if (!announced)
+            {
+                announced = true;
+                RunTrace.Mark("supervisor: run complete; waiting for " +
+                              string.Join(", ", exiting.Select(g => "pid " + g.Pid)) + " to exit");
+            }
+
+            Thread.Sleep(PollInterval);
+            _tail.Poll();
+            foreach (RunGroup g in exiting)
+            {
+                if (!ChildLiveness.IsAlive(g.Pid)) continue;
+                if (!_watches.TryGetValue(g.Pid, out ChildLiveness.Watch? w))
+                {
+                    // An earlier round's child: its watch went when the next round was adopted.
+                    Adopt(g);
+                    w = _watches[g.Pid];
+                }
+                ChildLiveness.Check(w, _tail, g.Models);   // starts / keeps its ShutdownSince clock
+                ForceCloseIfFinished(g, w);
+            }
+        }
+    }
+
+    /// <summary>How long <see cref="DrainExitingChildren"/> waits in all: the force-close grace, plus
+    /// room for a couple of polls and the terminator's own 30-second wait.</summary>
+    private static TimeSpan DrainLimit => ChildLiveness.ForceCloseGrace + TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// Whether the end of a run should wait for this group's Revit: it launched, has not been seen
+    /// to exit, was not set aside for inspection, is still alive, and has asked to close. Pure, so
+    /// the harness pins it.
+    /// </summary>
+    internal static bool AwaitingExit(RunGroup g, bool alive, bool askedToClose) =>
+        g.Pid > 0 && g.ExitedAt == null && !g.NeedsAttention && alive && askedToClose;
+
+    /// <summary>
     /// Ends any child that crashed into Autodesk's crash reporter, and closes reporter windows that
     /// crashed children left behind. Runs before the per-group sweep, so a child ended here is found
     /// gone straight away and takes the ordinary crash path (post-mortem, open/run-crash rule,

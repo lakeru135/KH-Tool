@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -1217,6 +1217,21 @@ internal static class Program
     /// </summary>
     private static void UnattendedFinishCases()
     {
+        Section("2.1.1.1  the run's end waits for a finished child that has not exited (live test B)");
+        var lingering = new RunGroup { Pid = 43860, Models = Models(1) };
+        Expect("alive and asked to close → the end of the run waits for it",
+            RunSupervisor.AwaitingExit(lingering, alive: true, askedToClose: true), true);
+        Expect("already gone → nothing to wait for",
+            RunSupervisor.AwaitingExit(lingering, alive: false, askedToClose: true), false);
+        Expect("alive but never asked to close → not this rule's business",
+            RunSupervisor.AwaitingExit(lingering, alive: true, askedToClose: false), false);
+        Expect("set aside for inspection → left open, not waited for",
+            RunSupervisor.AwaitingExit(new RunGroup { Pid = 9, NeedsAttention = true }, true, true), false);
+        Expect("seen to exit → not waited for",
+            RunSupervisor.AwaitingExit(new RunGroup { Pid = 9, ExitedAt = DateTime.Now }, true, true), false);
+        Expect("never launched → not waited for",
+            RunSupervisor.AwaitingExit(new RunGroup { Models = Models(2) }, true, true), false);
+
         Section("2.1.1.1  a close posted is never forgotten");
 
         // THE REGRESSION, at its exact shape: close posted, then a dialog line 4 s later, both read
