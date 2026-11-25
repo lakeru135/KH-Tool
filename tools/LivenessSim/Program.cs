@@ -1307,6 +1307,40 @@ internal static class Program
             CrashReporterWatch.Decide(new(9004, 0), launched, _ => true),
             CrashReporterWatch.Action.Ignore);
 
+        Section("2.1.1.1  Autodesk's error-report WINDOW (cer_dialog) is matched by its crashed pid (live test C)");
+        // The exact shapes senddmp.log recorded on 2026-11-25 12:12:11.
+        Expect("unquoted --option-file is read",
+            CrashReporterWatch.OptionFileFromCommandLine(
+                @"""C:\Program Files\Autodesk\Autodesk CER\dialog\cer_dialog.exe"" --option-file C:\Users\Admin\AppData\Local\Temp\cer_dialog.1795583528255.options"),
+            @"C:\Users\Admin\AppData\Local\Temp\cer_dialog.1795583528255.options");
+        Expect("quoted --option-file with a space is read whole",
+            CrashReporterWatch.OptionFileFromCommandLine(@"cer_dialog.exe --option-file ""C:\Temp Dir\x.options"" --other"),
+            @"C:\Temp Dir\x.options");
+        Expect("no --option-file → null",
+            CrashReporterWatch.OptionFileFromCommandLine("cer_dialog.exe"), (string?)null);
+        Expect("crashed-process-id is read from the options JSON",
+            CrashReporterWatch.CrashedPidFromOptions("{\n  \"allow-autosend\": true,\n  \"crashed-process-id\": 68864,\n  \"locale-id\": 1033\n}"),
+            68864);
+        Expect("options without a crashed pid → 0 (left alone)",
+            CrashReporterWatch.CrashedPidFromOptions("{ \"product-name\": \"Revit 2026.5\" }"), 0);
+        // senddmp.log as written on 2026-11-25 (options files do not survive): each launch line is
+        // paired with the crashed pid written just before it.
+        const string senddmpLog =
+            "  \"crashed-process-id\": 62936,\n[11/25/26 12:10:43] info     cer_dialog.exe is launched with pid 55440\n" +
+            "  \"crashed-process-id\": 68864,\n[11/25/26 12:12:11] info     cer_dialog.exe is launched with pid 52812\n";
+        Expect("senddmp.log: dialog 52812 reports the crash of 68864",
+            CrashReporterWatch.CrashedPidFromSenddmpLog(senddmpLog, 52812), 68864);
+        Expect("senddmp.log: dialog 55440 reports 62936, not the later crash",
+            CrashReporterWatch.CrashedPidFromSenddmpLog(senddmpLog, 55440), 62936);
+        Expect("senddmp.log: an unknown dialog pid → 0 (left alone)",
+            CrashReporterWatch.CrashedPidFromSenddmpLog(senddmpLog, 1234), 0);
+        Expect("a dialog for a crashed CHILD that already exited → closed",
+            CrashReporterWatch.Decide(new(52812, 3002), launched, _ => false),
+            CrashReporterWatch.Action.EndReporter);
+        Expect("a dialog for the user's OWN Revit (not a child) → left alone",
+            CrashReporterWatch.Decide(new(52813, 57124), launched, _ => false),
+            CrashReporterWatch.Action.Ignore);
+
         Section("2.1.1.1  a crash while exporting gets the open-crash rule");
 
         var group = Models(3);

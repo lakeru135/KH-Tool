@@ -197,6 +197,10 @@ internal sealed partial class RunSupervisor
         bool announced = false;
         while (true)
         {
+            // An error-report window from a crash late in the last round is closed here too: the
+            // per-poll sweep in PolicePace does not run once the rounds are over.
+            SweepCrashReporters();
+
             List<RunGroup> exiting = _manifest.Rounds.SelectMany(r => r.Groups)
                 .Where(g => g.Pid > 0 && AwaitingExit(g, ChildLiveness.IsAlive(g.Pid), AskedToClose(g)))
                 .Where(g => !_forceCloseTried.Contains(g.Pid))
@@ -271,15 +275,15 @@ internal sealed partial class RunSupervisor
                 switch (CrashReporterWatch.Decide(r, launched, ChildLiveness.IsAlive))
                 {
                     case CrashReporterWatch.Action.EndChildAndReporter:
-                        RunTrace.Mark($"supervisor: pid {r.ParentPid} crashed — Autodesk's crash reporter " +
+                        RunTrace.Mark($"supervisor: pid {r.CrashedPid} crashed — Autodesk's crash reporter " +
                                       $"(senddmp pid {r.Pid}) is waiting for a click");
-                        RevitTerminator.Terminate(r.ParentPid, "crashed; its crash reporter is showing");
-                        RevitTerminator.Terminate(r.Pid, $"crash reporter of pid {r.ParentPid}");
+                        RevitTerminator.Terminate(r.CrashedPid, "crashed; its crash reporter is showing");
+                        RevitTerminator.Terminate(r.Pid, $"crash reporter of pid {r.CrashedPid}");
                         break;
 
                     case CrashReporterWatch.Action.EndReporter:
                         RevitTerminator.Terminate(r.Pid,
-                            $"crash reporter left on screen by pid {r.ParentPid}, which has already exited");
+                            $"crash reporter left on screen by pid {r.CrashedPid}, which has already exited");
                         break;
                 }
             }
