@@ -57,8 +57,8 @@ internal static class CrashReporterWatch
         return isAlive(reporter.CrashedPid) ? Action.EndChildAndReporter : Action.EndReporter;
     }
 
-    /// <summary>Every running <c>senddmp.exe</c> with its parent pid. Overridable for the
-    /// harness.</summary>
+    /// <summary>Every running <c>senddmp.exe</c> and <c>cer_dialog.exe</c> with the pid of the Revit it
+    /// reports. Overridable for the harness.</summary>
     internal static Func<IReadOnlyList<Reporter>> Probe { get; set; } = FindReporters;
 
     private static IReadOnlyList<Reporter> FindReporters()
@@ -75,6 +75,8 @@ internal static class CrashReporterWatch
                 string exe = entry.szExeFile ?? "";
                 if (exe.Equals(ReporterProcessName + ".exe", StringComparison.OrdinalIgnoreCase))
                     found.Add(new Reporter((int)entry.th32ProcessID, (int)entry.th32ParentProcessID));
+                else if (exe.Equals(DialogProcessName + ".exe", StringComparison.OrdinalIgnoreCase))
+                    found.Add(new Reporter((int)entry.th32ProcessID, DialogCrashedPid((int)entry.th32ProcessID)));
             }
             while (Process32Next(snap, ref entry));
         }

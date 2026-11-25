@@ -1232,6 +1232,16 @@ internal static class Program
         Expect("never launched → not waited for",
             RunSupervisor.AwaitingExit(new RunGroup { Models = Models(2) }, true, true), false);
 
+        Section("2.1.1.1  the close goes to Revit's frame, not KH-Tool's progress window (live test F)");
+        Expect("Revit's frame on Home is the target",
+            RevitShutdown.IsRevitFrameTitle("Autodesk Revit 2026.5 - [Home]"), true);
+        Expect("Revit's frame with a model is the target",
+            RevitShutdown.IsRevitFrameTitle("Autodesk Revit 2025.4 - [BPP-NKE-M3-CS-GH - 3D View: {3D}]"), true);
+        Expect("KH-Tool's Batch progress window is NOT (12:57: the close went there)",
+            RevitShutdown.IsRevitFrameTitle("Batch progress — live2111F125146"), false);
+        Expect("an untitled window is not",
+            RevitShutdown.IsRevitFrameTitle(""), false);
+
         Section("2.1.1.1  a close posted is never forgotten");
 
         // THE REGRESSION, at its exact shape: close posted, then a dialog line 4 s later, both read

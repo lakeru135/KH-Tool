@@ -73,7 +73,13 @@ internal static class RevitShutdown
             if (process.HasExited) return true;
             process.Refresh();
 
-            bool requested = process.CloseMainWindow();
+            // Revit's own frame first. Process.CloseMainWindow targets whatever .NET calls the main
+            // window at that instant — during a run that is KH-Tool's "Batch progress" window — and
+            // on 2026-11-25 12:57 (live test F) the close went to it: the progress window shut,
+            // Revit stayed on Home for seven minutes, and nothing asked again.
+            bool requested = PostCloseToRevitFrame(pid);
+            if (!requested)
+                requested = process.CloseMainWindow();
             if (!requested)
                 requested = PostCloseToTopLevelWindows(pid);
 
@@ -92,6 +98,43 @@ internal static class RevitShutdown
             return false;
         }
     }
+
+    /// <summary>
+    /// WM_CLOSE to the process's visible, unowned top-level window titled "Autodesk Revit…" — the
+    /// frame whose close quits Revit. False when there is none (not yet shown, or not Revit).
+    /// </summary>
+    private static bool PostCloseToRevitFrame(int pid)
+    {
+        bool posted = false;
+        EnumWindows((hwnd, _) =>
+        {
+            GetWindowThreadProcessId(hwnd, out uint windowPid);
+            if (windowPid == (uint)pid && GetWindow(hwnd, GW_OWNER) == IntPtr.Zero &&
+                IsWindowVisible(hwnd) && IsRevitFrameTitle(WindowTitle(hwnd)))
+                posted |= PostMessage(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+            return true;
+        }, IntPtr.Zero);
+        return posted;
+    }
+
+    /// <summary>Revit's frame title: "Autodesk Revit 2026.5 - [Home]", "Autodesk Revit 2025.4 - [model]"…
+    /// Pure, for the harness.</summary>
+    internal static bool IsRevitFrameTitle(string? title) =>
+        title != null && title.StartsWith("Autodesk Revit", StringComparison.OrdinalIgnoreCase);
+
+    private static string WindowTitle(IntPtr hwnd)
+    {
+        var text = new System.Text.StringBuilder(512);
+        GetWindowText(hwnd, text, text.Capacity);
+        return text.ToString();
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr hwnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hwnd, System.Text.StringBuilder text, int maxCount);
 
     private static bool PostCloseToTopLevelWindows(int pid)
     {
