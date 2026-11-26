@@ -218,7 +218,7 @@ public sealed class MirrorCheckWindow : Form
 
         bool own = s.TargetGuid.Length == 0;
         _paramsText = s.Problem ?? s.ParamsText;
-        _params.ForeColor = s.Problem != null || s.MissingTarget != null ? Color.Firebrick : ForeColor;
+        _params.ForeColor = s.Problem != null || s.MissingTarget != null ? Theme.ErrorColor(_params) : Theme.Dim(_params);
         // Never read Visible back: it is false while the row (or the not-yet-shown window) is hidden,
         // which kept the button hidden for good.
         bool offerSetUp = own && !s.ParamsReady;

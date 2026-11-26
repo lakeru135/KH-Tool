@@ -32,6 +32,12 @@ public sealed class ScheduleRunWindow : Form
     private readonly ComboBox _exportIfcSetCombo;
     private readonly ComboBox _fileLogSetCombo;
     private readonly ComboBox _dataExtractSetCombo;
+    /// <summary>Index of "Don't sync (dry run)" in <c>_syncCombo</c> — the default for a new or reset schedule.</summary>
+    private const int DefaultSyncIndex = 1;
+
+    private Action? _refit; // FormLayout.KeepFitted's refit — rows appearing need room
+    private readonly Control _initiateRow, _cutModelRow, _relinkRow, _correctWorksetRow,
+        _exportNwcRow, _exportIfcRow, _fileLogRow, _dataExtractRow;
     private readonly ComboBox _syncCombo;
     private readonly ComboBox _completionCombo;
     private readonly TextBox _folderBox;
@@ -226,7 +232,7 @@ public sealed class ScheduleRunWindow : Form
         _syncCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         _syncCombo.Items.Add(new NamedItem(SyncMode.Sync.ToString(), "Sync changes to central"));
         _syncCombo.Items.Add(new NamedItem(SyncMode.NoSync.ToString(), "Don't sync (dry run)"));
-        _syncCombo.SelectedIndex = 1; // Dry run (default) — the irreversible option is opt-in.
+        _syncCombo.SelectedIndex = DefaultSyncIndex; // Dry run — the irreversible option is opt-in.
                                       // A saved job's own setting still wins; see LoadJob.
 
         // --- When finished (post-run disposition) ---
@@ -290,32 +296,20 @@ public sealed class ScheduleRunWindow : Form
         FormLayout.AddFillRow(root, lists, 60);
         FormLayout.AddAutoRow(root, _countLabel);
         FormLayout.AddAutoRow(root, note);
-        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Initiate input set:", _initiateSetCombo));
-        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Cut model input set:", _cutModelSetCombo));
-        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Internal Relink set:", _relinkSetCombo));
-        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Correct Workset set:", _correctWorksetSetCombo));
-        // Export NWC and Export IFC + Data share ONE row. A separate row for IFC is exactly the kind
-        // of addition the 40/60 note above warns about: it starved the lists below their 240px floor
-        // at the dialog's minimum size, and no percent split cleared both sizes in the layout gate.
-        var exportRow = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 3, RowCount = 1, Margin = new Padding(0)
-        };
-        exportRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        exportRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        exportRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        _exportNwcSetCombo.Dock = DockStyle.Fill;
-        _exportIfcSetCombo.Dock = DockStyle.Fill;
-        exportRow.Controls.Add(_exportNwcSetCombo, 0, 0);
-        exportRow.Controls.Add(new Label
-        {
-            Text = "IFC + Data:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(9, 6, 6, 3)
-        }, 1, 0);
-        exportRow.Controls.Add(_exportIfcSetCombo, 2, 0);
-        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Export NWC options:", exportRow));
-        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Get File Log set:", _fileLogSetCombo));
-        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Get Data Extract set:", _dataExtractSetCombo));
+        // Conditional input-set rows: hidden (not just disabled) until their action is ticked, so the
+        // dialog stops spending ~220px on dead rows. Export NWC and Export IFC + Data get their own
+        // rows again — they were squeezed onto one only because both were always visible.
+        _initiateRow = FormLayout.LabeledRow("Initiate input set:", _initiateSetCombo);
+        _cutModelRow = FormLayout.LabeledRow("Cut model input set:", _cutModelSetCombo);
+        _relinkRow = FormLayout.LabeledRow("Internal Relink set:", _relinkSetCombo);
+        _correctWorksetRow = FormLayout.LabeledRow("Correct Workset set:", _correctWorksetSetCombo);
+        _exportNwcRow = FormLayout.LabeledRow("Export NWC options:", _exportNwcSetCombo);
+        _exportIfcRow = FormLayout.LabeledRow("Export IFC + Data options:", _exportIfcSetCombo);
+        _fileLogRow = FormLayout.LabeledRow("Get File Log set:", _fileLogSetCombo);
+        _dataExtractRow = FormLayout.LabeledRow("Get Data Extract set:", _dataExtractSetCombo);
+        foreach (Control row in new Control[] { _initiateRow, _cutModelRow, _relinkRow, _correctWorksetRow,
+                     _exportNwcRow, _exportIfcRow, _fileLogRow, _dataExtractRow })
+            FormLayout.AddAutoRow(root, row);
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Model treatment:", _syncCombo));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("When finished:", _completionCombo));
         FormLayout.AddAutoRow(root, splitNote);
@@ -347,12 +341,16 @@ public sealed class ScheduleRunWindow : Form
         // 896x800 minimum is what let the lists be starved: a minimum WIDER than the natural size
         // meant the dialog opened already over-full, and FormLayout's table does not scroll.
         // +_status.Height because the status strip docks outside root.
+        // Hide the conditional rows BEFORE measuring, or the window (and its MinimumSize) is sized for
+        // rows that are about to vanish and opens at full height.
+        UpdateSelectionUi();
         ClientSize = new Size(
             Math.Max(ClientSize.Width, root.PreferredSize.Width),
             root.PreferredSize.Height + _status.Height);
 
         MinimumSize = Size;
-        FormLayout.KeepFitted(this, root, _status); // grows with content restored later, DPI scaling and label alignment
+        FormLayout.FitPercentColumns(this, lists);   // the 68/32 list columns must each hold their widest child
+        _refit = FormLayout.KeepFitted(this, root, _status); // grows with content restored later, DPI scaling and label alignment
         open.Mark("theme");
         _jobs.RefreshGrid();
         open.Mark("RefreshGrid");
@@ -367,7 +365,7 @@ public sealed class ScheduleRunWindow : Form
     {
         // Reachable from control events raised while the constructor is still wiring things up,
         // and the label is built after those controls.
-        if (_countLabel is null) return;
+        if (_countLabel is null || _dataExtractRow is null) return;
 
         var checkedActions = _actionsScriptsList.CheckedItems.Cast<ActionOrScriptItem>().ToList();
 
@@ -376,15 +374,23 @@ public sealed class ScheduleRunWindow : Form
             _models.AdHocModels,
             _actionsScriptsList.CheckedItems.Count,
             SplitAllowed()) + OrderingHint(checkedActions);
-        CheckListBehavior.SetEnabledOrBlank(_initiateSetCombo, checkedActions.Any(a => a.IsInitiate));
-        CheckListBehavior.SetEnabledOrBlank(_cutModelSetCombo, checkedActions.Any(a => a.IsCutModel));
-        CheckListBehavior.SetEnabledOrBlank(_relinkSetCombo, checkedActions.Any(a => a.IsRelink));
-        CheckListBehavior.SetEnabledOrBlank(_correctWorksetSetCombo, checkedActions.Any(a => a.IsCorrectWorkset));
-        CheckListBehavior.SetEnabledOrBlank(_exportNwcSetCombo, checkedActions.Any(a => a.IsExportNwc));
-        CheckListBehavior.SetEnabledOrBlank(_exportIfcSetCombo, checkedActions.Any(a => a.IsExportIfc));
+        // Same condition that used to enable each combo now shows its row; the blank/default
+        // selection logic is unchanged, so saved and loaded picks round-trip as before.
+        ShowRow(_initiateRow, _initiateSetCombo, checkedActions.Any(a => a.IsInitiate));
+        ShowRow(_cutModelRow, _cutModelSetCombo, checkedActions.Any(a => a.IsCutModel));
+        ShowRow(_relinkRow, _relinkSetCombo, checkedActions.Any(a => a.IsRelink));
+        ShowRow(_correctWorksetRow, _correctWorksetSetCombo, checkedActions.Any(a => a.IsCorrectWorkset));
+        ShowRow(_exportNwcRow, _exportNwcSetCombo, checkedActions.Any(a => a.IsExportNwc));
+        ShowRow(_exportIfcRow, _exportIfcSetCombo, checkedActions.Any(a => a.IsExportIfc));
+        ShowRow(_fileLogRow, _fileLogSetCombo, checkedActions.Any(a => a.IsFileLog));
+        ShowRow(_dataExtractRow, _dataExtractSetCombo, checkedActions.Any(a => a.IsDataExtract));
+        _refit?.Invoke(); // a newly shown row needs height; grow-only, so it never shrinks the window
+    }
 
-        CheckListBehavior.SetEnabledOrBlank(_fileLogSetCombo, checkedActions.Any(a => a.IsFileLog));
-        CheckListBehavior.SetEnabledOrBlank(_dataExtractSetCombo, checkedActions.Any(a => a.IsDataExtract));
+    private static void ShowRow(Control row, ComboBox combo, bool on)
+    {
+        CheckListBehavior.SetEnabledOrBlank(combo, on);
+        row.Visible = on;
     }
 
     /// <summary>
@@ -652,7 +658,7 @@ public sealed class ScheduleRunWindow : Form
         if (_exportIfcSetCombo.Items.Count > 0) _exportIfcSetCombo.SelectedIndex = 0;
         if (_fileLogSetCombo.Items.Count > 0) _fileLogSetCombo.SelectedIndex = 0;
         if (_dataExtractSetCombo.Items.Count > 0) _dataExtractSetCombo.SelectedIndex = 0;
-        _syncCombo.SelectedIndex = 0; // Sync (default)
+        _syncCombo.SelectedIndex = DefaultSyncIndex; // same safe default as a fresh open
         _completionCombo.SelectedIndex = 2; // Close Revit — the natural default for a headless schedule
         OnSplitConditionChanged();
         _folderBox.Text = Settings.UserSettings.DefaultDestinationFolder;

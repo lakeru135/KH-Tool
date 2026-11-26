@@ -16,6 +16,7 @@ public sealed class CategoryPickerDialog : Form
 {
     private readonly TextBox _search;
     private readonly CheckedListBox _list;
+    private readonly Label _count = new() { AutoSize = true, Margin = new Padding(12, 7, 3, 0) };
     // Checked state independent of the current filter (enum name → checked).
     private readonly HashSet<string> _checked = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<CategoryItem> _all = new();
@@ -49,6 +50,7 @@ public sealed class CategoryPickerDialog : Form
             {
                 if (e.NewValue == CheckState.Checked) _checked.Add(item.EnumName);
                 else _checked.Remove(item.EnumName);
+                UpdateCount(); // _checked is already updated here
             }
         };
 
@@ -59,6 +61,13 @@ public sealed class CategoryPickerDialog : Form
         var root = FormLayout.SingleColumn();
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Search:", _search));
         FormLayout.AddFillRow(root, _list, 100);
+        var all = new Button { Text = "All", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new System.Drawing.Size(70, 0) };
+        all.Click += (_, _) => SetVisible(true);
+        var clear = new Button { Text = "Clear", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new System.Drawing.Size(70, 0) };
+        clear.Click += (_, _) => SetVisible(false);
+        var selectRow = FormLayout.FlowRow(all, clear, _count);
+        selectRow.Anchor = AnchorStyles.Left;
+        FormLayout.AddAutoRow(root, selectRow);
         var buttons = FormLayout.FlowRow(ok, cancel);
         buttons.Anchor = AnchorStyles.Right;
         FormLayout.AddAutoRow(root, buttons);
@@ -70,6 +79,7 @@ public sealed class CategoryPickerDialog : Form
 
         BuildCatalog();
         RefreshList();
+        UpdateCount();
     }
 
     // The full BuiltInCategory enum has ~1000+ entries, most of them internal/subcategory noise.
@@ -132,6 +142,16 @@ public sealed class CategoryPickerDialog : Form
         }
         _list.EndUpdate();
     }
+
+    // All / Clear act on the rows currently shown (handy under a search filter); others keep their state.
+    private void SetVisible(bool value)
+    {
+        for (int i = 0; i < _list.Items.Count; i++) _list.SetItemChecked(i, value);
+        UpdateCount();
+    }
+
+    private void UpdateCount() =>
+        _count.Text = $"{_all.Count(i => _checked.Contains(i.EnumName))} selected"; // only names in the catalog, as OrderedSelection returns
 
     private List<string> OrderedSelection() =>
         _all.Where(i => _checked.Contains(i.EnumName)).Select(i => i.EnumName).ToList();

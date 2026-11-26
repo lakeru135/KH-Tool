@@ -99,6 +99,7 @@ internal abstract class DrwToolWindow : Form
         FormLayout.AddFillRow(root, page, 100);
         FormLayout.AddAutoRow(root, bottom);
         Controls.Add(root);
+        Root = root;
         AcceptButton = run;
         CancelButton = cancel;
         // Scoped, as EnlargeWindow does: aligned across the whole form, the page's longest label set
@@ -107,9 +108,78 @@ internal abstract class DrwToolWindow : Form
         FormLayout.AlignLabels(this, presetRow, page);
         DrwControls.FitNotes(this);
         Theme.Apply(this);
+        // After AlignLabels and the DPI autoscale have settled (E17).
+        Shown += (_, _) => BeginInvoke((Action)(() => GrowToShowPage(page)));
+    }
+
+    /// <summary>
+    /// Grows the window (never shrinks it) until the whole page shows without a vertical scrollbar
+    /// and without a truncated line, but no further than the screen's work area: on a 768-px-high
+    /// screen the page keeps its scroll rather than the Run button ending up under the taskbar.
+    /// A fixed size guessed in the constructor was always a line or two short once the DPI scale
+    /// or font changed (E17, and the high-DPI warnings of E20). The width the page needs also
+    /// becomes the minimum width, so dragging the window narrower cannot cut a line off again.
+    /// </summary>
+    private void GrowToShowPage(Control page)
+    {
+        if (IsDisposed || WindowState != FormWindowState.Normal) return;
+        Rectangle work = Screen.FromControl(this).WorkingArea;
+        Size chrome = Size - ClientSize;
+
+        // Width first: a wider page wraps its notes to fewer lines, which changes the height it needs.
+        int startW = ClientSize.Width, startMinW = MinimumSize.Width;
+        int WantWidth()
+        {
+            int widest = 0;
+            foreach (Control c in page.Controls)
+                if (c.Visible) widest = Math.Max(widest, c.GetPreferredSize(Size.Empty).Width + c.Margin.Horizontal);
+            return Math.Min(ClientSize.Width - page.ClientSize.Width + page.Padding.Horizontal + widest,
+                            work.Width - chrome.Width);
+        }
+        void SetWidth(int wantW, bool setMinimum = true)
+        {
+            int minW = Math.Min(Math.Max(startMinW, wantW + chrome.Width), work.Width);
+            if (setMinimum && minW != MinimumSize.Width) MinimumSize = new Size(minW, MinimumSize.Height);
+            int clientW = Math.Max(startW, wantW);
+            if (clientW != ClientSize.Width) ClientSize = new Size(clientW, ClientSize.Height);
+            PerformLayout();
+        }
+        bool scrolledBefore = page is ScrollableControl { VerticalScroll.Visible: true };
+        int firstWant = WantWidth();
+        SetWidth(firstWant);
+
+        bool GrowHeight()
+        {
+            int width = page.ClientSize.Width - page.Padding.Horizontal;
+            int need = page.Padding.Vertical;
+            foreach (Control c in page.Controls)
+                if (c.Visible) need += c.GetPreferredSize(new Size(width, 0)).Height + c.Margin.Vertical;
+            int wantH = Math.Min(ClientSize.Height - page.Height + need, work.Height - chrome.Height);
+            if (wantH <= ClientSize.Height) return false;
+            ClientSize = new Size(ClientSize.Width, wantH);
+            PerformLayout();
+            return true;
+        }
+        // The width above was measured beside the page's vertical scrollbar. Taller now, the page may
+        // no longer scroll, and the window would keep the ~17 px it only wanted for the bar. Hand back
+        // exactly the bar's width — not a fresh measurement: a wrapping note reports the width it was
+        // just given, so measuring again only echoes the wider window back. SetWidth never goes below
+        // the size the window opened at; then the height catches up with any note that re-wraps.
+        // The MINIMUM width keeps the bar: dragged down to its minimum height the page scrolls again
+        // (the layout gate found "Rename types to the new font…" cut off there when it did not).
+        if (GrowHeight() && scrolledBefore && page is ScrollableControl { VerticalScroll.Visible: false })
+        {
+            SetWidth(firstWant - SystemInformation.VerticalScrollBarWidth, setMinimum: false);
+            GrowHeight();
+        }
+        if (Bottom > work.Bottom) Top = Math.Max(work.Top, work.Bottom - Height);
+        if (Right > work.Right) Left = Math.Max(work.Left, work.Right - Width);
     }
 
     private Button? _cancel;
+
+    /// <summary>The window's outer table (preset row, page, buttons), once <see cref="Build(Control, Control, string, Size, Size)"/> has run.</summary>
+    protected TableLayoutPanel? Root { get; private set; }
 
     /// <summary>The Cancel button, pressed (the self-test).</summary>
     internal void PressCancel() => _cancel?.PerformClick();
@@ -180,8 +250,8 @@ internal sealed class DatumDimensionWindow : DrwToolWindow
                 FormLayout.LabeledRow("Dimension type:", _dimType),
                 _overall, _every, _extra,
                 FormLayout.LabeledRow("Datum end:", _side),
-                FormLayout.LabeledRow("Overall string, mm from the end:", _overallOffset),
-                FormLayout.LabeledRow("Every-datum string, mm from the end:", _everyOffset, _snap),
+                FormLayout.LabeledRow("Overall string, mm from the end:", FormLayout.ShortField(_overallOffset)),
+                FormLayout.LabeledRow("Every-datum string, mm from the end:", FormLayout.ShortField(_everyOffset, _snap)),
                 _spacingFromType,
                 FormLayout.NoteLabel(this, "From the datum end inward: overall, then every datum, then the extra " +
                     "string, one gap apart (the difference of the two mm values, or the type's snap distance). " +
@@ -302,7 +372,7 @@ internal sealed class MatchDatumsWindow : Form
 
         _filter = new TextBox { Width = 240 };
         _filter.TextChanged += (_, _) => Fill();
-        _list = new CheckedListBox { Dock = DockStyle.Fill, CheckOnClick = true, IntegralHeight = false };
+        _list = new CheckedListBox { Dock = DockStyle.Fill, CheckOnClick = true, IntegralHeight = false, MinimumSize = new Size(0, 90) };
         _list.ItemCheck += (_, e) =>
         {
             if (_filling) return;
@@ -349,6 +419,7 @@ internal sealed class MatchDatumsWindow : Form
         Fill();
         DrwControls.FitNotes(this);
         Theme.Apply(this);
+        FormLayout.FitAroundList(this, root, _list);   // the list was starved to 1 px at 150-200 %
     }
 
     private IEnumerable<Choice> Visible()
@@ -465,11 +536,11 @@ internal sealed class StairAnnotationWindow : DrwToolWindow
                 FormLayout.LabeledRow("Tag Type:", _tagType),
                 FormLayout.LabeledRow("Display Rule:", _display),
                 FormLayout.LabeledRow("Reference:", _reference),
-                FormLayout.LabeledRow("Offset from Reference (mm):", _referenceOffset),
+                FormLayout.LabeledRow("Offset from Reference (mm):", FormLayout.ShortField(_referenceOffset)),
                 FormLayout.LabeledRow("Justify:", _justify),
-                FormLayout.LabeledRow("Justify Offset (mm):", _justifyOffset),
+                FormLayout.LabeledRow("Justify Offset (mm):", FormLayout.ShortField(_justifyOffset)),
                 FormLayout.LabeledRow("Orientation:", _orientation),
-                FormLayout.LabeledRow("Number Size (mm):", _numberSize),
+                FormLayout.LabeledRow("Number Size (mm):", FormLayout.ShortField(_numberSize)),
                 FormLayout.NoteLabel(this, "The Graphics settings of Revit's Properties palette, written on every " +
                     "new number (tread numbers have no type). Number Size 0 keeps Revit's size. Numbers are placed " +
                     "in the plan of the stair's base level only, so a stair seen from the level above is not " +
@@ -478,9 +549,9 @@ internal sealed class StairAnnotationWindow : DrwToolWindow
             DrwControls.Group("Dimensions",
                 _dims,
                 FormLayout.LabeledRow("Dimension type:", _dimType),
-                FormLayout.LabeledRow("First string from the stair (mm on paper):", _dimOffset),
+                FormLayout.LabeledRow("First string from the stair (mm on paper):", FormLayout.ShortField(_dimOffset)),
                 _dimSnap,
-                FormLayout.LabeledRow("Between strings (mm on paper):", _dimSpacing, _dimSnapValue),
+                FormLayout.LabeledRow("Between strings (mm on paper):", FormLayout.ShortField(_dimSpacing, _dimSnapValue)),
                 FormLayout.LabeledRow("Run prefix:", _runLabel),
                 _dimOverall,
                 FormLayout.NoteLabel(this, "Each run is dimensioned along its outer side, with the run segment prefixed " +

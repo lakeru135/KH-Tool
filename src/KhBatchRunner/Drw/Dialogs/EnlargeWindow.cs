@@ -107,7 +107,9 @@ internal sealed class EnlargeWindow : Form
         // ---------------- Targets tab
         _filter = new TextBox();
         _filter.TextChanged += (_, _) => RefillTargets();
-        _targets = new CheckedListBox { CheckOnClick = true, IntegralHeight = false, Dock = DockStyle.Fill };
+        // A floor, so the window is sized to keep a few rows visible: without one the list was the
+        // row that absorbed every shortfall and drew 1 px high at 200 % (E20).
+        _targets = new CheckedListBox { CheckOnClick = true, IntegralHeight = false, Dock = DockStyle.Fill, MinimumSize = new Size(0, 96) };
         _targets.ItemCheck += (_, e) =>
         {
             if (_refilling) return;
@@ -129,10 +131,13 @@ internal sealed class EnlargeWindow : Form
                 PickRequested = true;
                 DialogResult = DialogResult.Retry;
             }));
+        // Wraps instead of pushing "Pick … in model" past the right edge at 150-200 %.
+        checkRow.Dock = DockStyle.Fill;
+        checkRow.WrapContents = true;
         _batchFilter = new TextBox();
 
         var targetsPage = FormLayout.SingleColumn();
-        FormLayout.AddAutoRow(targetsPage, FormLayout.LabeledRow("Filter:", _filter));
+        FormLayout.AddAutoRow(targetsPage, FormLayout.LabeledRow("Filter:", _filter, aligned: false));
         FormLayout.AddFillRow(targetsPage, _targets, 100);
         FormLayout.AddAutoRow(targetsPage, checkRow);
         FormLayout.AddAutoRow(targetsPage, FormLayout.LabeledRow("Batch Run takes " + what + " whose name contains:", _batchFilter));
@@ -187,8 +192,8 @@ internal sealed class EnlargeWindow : Form
         var planGroup = DrwControls.Group("Enlarged plan",
             _createPlan,
             FormLayout.LabeledRow("Plan type:", _planType),
-            FormLayout.LabeledRow("Crop margin (m):", _planMargin),
-            FormLayout.LabeledRow("Scale  1 :", _scale),
+            FormLayout.LabeledRow("Crop margin (m):", FormLayout.ShortField(_planMargin)),
+            FormLayout.LabeledRow("Scale  1 :", FormLayout.ShortField(_scale)),
             FormLayout.NoteLabel(this, "Each view is cropped to the " + (data.IsStair ? "stair" : "room") +
                 " plus the margin."));
         var sideRow = FormLayout.FlowRow(new Label { Text = "Looking:", AutoSize = true, Margin = new Padding(3, 6, 6, 3) },
@@ -209,8 +214,8 @@ internal sealed class EnlargeWindow : Form
             // One per line (same parent, so they still exclude each other): side by side they ran past
             // the fields column beside the sample picture at the minimum width.
             _fromEdge, _fromCentre,
-            FormLayout.LabeledRow("Line inset from edge (m):", _sectionOffset),
-            FormLayout.LabeledRow("Offset from centre (m):", _sectionCentreOffset),
+            FormLayout.LabeledRow("Line inset from edge (m):", FormLayout.ShortField(_sectionOffset)),
+            FormLayout.LabeledRow("Offset from centre (m):", FormLayout.ShortField(_sectionCentreOffset)),
             FieldNote("From the edge: the line stands the inset inside the side behind it, looking across. " +
                       "From the centre: + moves the line back from the centre, − forward."));
 
@@ -218,10 +223,10 @@ internal sealed class EnlargeWindow : Form
         // the target or the level above. Sections AND elevations use them (elevations since 0.2.7).
         GroupBox heightGroup = SampleGroup(data.IsStair ? "Section crop and height" : "Crop and height (sections and elevations)",
             "Sample height", _heightDiagram, out TableLayoutPanel heightFields,
-            FormLayout.LabeledRow("Side and far crop (m):", _sectionCrop),
-            FormLayout.LabeledRow("Below the bottom (m):", _sectionBelow),
+            FormLayout.LabeledRow("Side and far crop (m):", FormLayout.ShortField(_sectionCrop)),
+            FormLayout.LabeledRow("Below the bottom (m):", FormLayout.ShortField(_sectionBelow)),
             FormLayout.LabeledRow("Measure the top from:", _topFrom),
-            FormLayout.LabeledRow("Above it (m):", _sectionAbove),
+            FormLayout.LabeledRow("Above it (m):", FormLayout.ShortField(_sectionAbove)),
             FieldNote("The side and far crop reaches that far past the " + (data.IsStair ? "stair" : "outline") +
                       " and past what the view looks at. Next level above: the first level above the " +
                       (data.IsStair ? "stair's top level (a stair ending at L2 under a Roof level uses Roof)"
@@ -230,16 +235,16 @@ internal sealed class EnlargeWindow : Form
 
         // Stairs: room in front of the first step and past the last one, for plans and sections alike.
         var boundaryGroup = DrwControls.Group("Stair boundary",
-            FormLayout.LabeledRow("Beyond the first step (m):", _beforeFirst),
-            FormLayout.LabeledRow("Beyond the last step (m):", _afterLast),
+            FormLayout.LabeledRow("Beyond the first step (m):", FormLayout.ShortField(_beforeFirst)),
+            FormLayout.LabeledRow("Beyond the last step (m):", FormLayout.ShortField(_afterLast)),
             FormLayout.NoteLabel(this, "Stretches the stair's outline in front of the first riser and past the " +
                 "last riser, keeping the run's width. Plans and sections both use it; 0 = the stair itself."));
         var elevGroup = DrwControls.Group("Elevation",
             FormLayout.LabeledRow("Elevation type:", _elevationType),
             FormLayout.FlowRow(_byBoundary, _byCenter),
-            FormLayout.LabeledRow("Minimum edge length (m):", _minLength),
+            FormLayout.LabeledRow("Minimum edge length (m):", FormLayout.ShortField(_minLength)),
             _innerLoops,
-            FormLayout.LabeledRow("Marker inset from edge (m):", _inset),
+            FormLayout.LabeledRow("Marker inset from edge (m):", FormLayout.ShortField(_inset)),
             FormLayout.NoteLabel(this, "Elevations take their crop and height from \"Crop and height\" above."));
         var viewsPage = data.IsStair
             ? DrwControls.Page(planGroup, boundaryGroup, vertGroup, sectionGroup, heightGroup)
@@ -300,7 +305,8 @@ internal sealed class EnlargeWindow : Form
         _params = new DataGridView
         {
             Dock = DockStyle.Fill, AllowUserToAddRows = true, AllowUserToDeleteRows = true,
-            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, RowHeadersWidth = 28
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, RowHeadersWidth = 28,
+            MinimumSize = new Size(0, 96)
         };
         foreach (ParamChoice c in data.ViewParameters) _choices[c.Label] = c;
         _paramColumn = new DataGridViewComboBoxColumn
@@ -361,6 +367,14 @@ internal sealed class EnlargeWindow : Form
         bottom.Controls.Add(_status, 0, 0);
         bottom.Controls.Add(run, 1, 0);
         bottom.Controls.Add(cancel, 2, 0);
+        // The status ("1 of 4 rooms ticked  (1 from your selection)") wraps in the room the buttons
+        // leave it, instead of being cut off at 150-200 %.
+        bottom.Layout += (_, _) =>
+        {
+            int w = bottom.ClientSize.Width - run.Width - run.Margin.Horizontal
+                    - cancel.Width - cancel.Margin.Horizontal - _status.Margin.Horizontal - bottom.Padding.Horizontal;
+            if (w > 40 && _status.MaximumSize.Width != w) _status.MaximumSize = new Size(w, 0);
+        };
 
         _bar = new DrwPresetBar<EnlargePreset>(this, store, Capture, Apply, initial.Name);
 
@@ -380,6 +394,19 @@ internal sealed class EnlargeWindow : Form
         Theme.Apply(this);
         _templateNote.ForeColor = Theme.Dim(_templateNote);
         UpdateTemplateNote();
+        // Grows to what the tabs hold (the Rooms tab's list floor, its wrapped buttons and notes) as
+        // the font and DPI scale, instead of opening at a flat 760x640 that starves the list (E20).
+        Action refit = FormLayout.KeepFitted(this, root);
+        // Ticking rooms lengthens the status, which can wrap onto another line: make room for it.
+        // Only a new tallest height refits - every refit re-lays the bottom row and resizes the
+        // status, so refitting on any size change loops forever.
+        int tallestStatus = _status.Height;
+        _status.SizeChanged += (_, _) =>
+        {
+            if (_status.Height <= tallestStatus) return;
+            tallestStatus = _status.Height;
+            refit();
+        };
     }
 
     private readonly Label _status;

@@ -43,7 +43,7 @@ internal static class NotifyHost
 
     private const int DefaultHoldMinutes = 60;
 
-    private const string DefaultAppName = "KH Batch Script Runner";
+    private const string DefaultAppName = "KH-Tool";
 
     internal static int Run()
     {
@@ -57,8 +57,10 @@ internal static class NotifyHost
         bool failed = Env(ScheduleEnvironment.NotifyFailed) == "1";
         string log = Env(ScheduleEnvironment.NotifyLog);
         bool canOpenLog = log.Length > 0 && Program.CanOpenLog(log);
+        // The destination folder is derived from the log path (parent of its Log folder).
+        bool canOpenResult = log.Length > 0 && Program.CanOpenResult(Program.ResultFolderOfLog(log));
 
-        return Show(app, title, message, failed, log, canOpenLog, HoldMinutes(failed));
+        return Show(app, title, message, failed, log, canOpenLog, canOpenResult, HoldMinutes(failed));
     }
 
     /// <summary>
@@ -77,7 +79,7 @@ internal static class NotifyHost
         if (savePath != null) return Save(DefaultAppName, title, message, failed, savePath);
 
         return Show(DefaultAppName, title, message, failed, log: "", canOpenLog: false,
-                    holdMinutes: DefaultHoldMinutes);
+                    canOpenResult: false, holdMinutes: DefaultHoldMinutes);
     }
 
     /// <summary>Writes what the card looks like to a PNG and exits, for reviewing the design where
@@ -86,9 +88,10 @@ internal static class NotifyHost
     {
         try
         {
-            // canOpenLog: true so the two-button layout is what gets reviewed — no log is opened,
+            // Both flags true so the three-button layout is what gets reviewed — nothing is opened,
             // because nothing is clicked and the card is never shown.
-            using var card = new NotifyCard(app, title, message, failed, logPath: "", canOpenLog: true);
+            using var card = new NotifyCard(app, title, message, failed, logPath: "",
+                                            canOpenLog: true, canOpenResult: true);
             using Bitmap image = card.Render();
             image.Save(path, System.Drawing.Imaging.ImageFormat.Png);
             return 0;
@@ -101,7 +104,7 @@ internal static class NotifyHost
     }
 
     private static int Show(string app, string title, string message, bool failed,
-                            string log, bool canOpenLog, int holdMinutes)
+                            string log, bool canOpenLog, bool canOpenResult, int holdMinutes)
     {
         try
         {
@@ -115,7 +118,7 @@ internal static class NotifyHost
             expiry.Start();
 
             // Closing the card ends the process — the message has been dealt with.
-            var card = new NotifyCard(app, title, message, failed, log, canOpenLog);
+            var card = new NotifyCard(app, title, message, failed, log, canOpenLog, canOpenResult);
             card.FormClosed += (_, _) => Application.ExitThread();
             card.Show();
             Trace(card);

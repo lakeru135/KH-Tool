@@ -36,7 +36,7 @@ public sealed class ExportIfcWindow : Form
     private readonly TextBox _destBox;
     private readonly TextBox _projectLogBox;
     private readonly CheckBox? _activeModelCheck;
-    private readonly Label _status;
+    private readonly StatusLine _status;
 
     /// <summary>The options to run with, set only when the user chose Run. Null on Close.</summary>
     public ExportIfcInputSet? RunSpec { get; private set; }
@@ -182,7 +182,7 @@ public sealed class ExportIfcWindow : Form
             _activeModelCheck = activeCheck;
         }
 
-        _status = new Label { AutoSize = true, Margin = new Padding(3, 6, 3, 3) };
+        _status = new StatusLine { DetailsTitle = Text };
 
         FormLayout.AddAutoRow(root, note);
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Saved options set:", _setsCombo, saveBtn, dupBtn, deleteBtn));
@@ -200,10 +200,12 @@ public sealed class ExportIfcWindow : Form
             FormLayout.AddAutoRow(root, _activeModelCheck);
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Export CSV log to:", _destBox, destBrowse));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Project log name:", _projectLogBox));
-        FormLayout.AddAutoRow(root, _status);
-        FormLayout.AddAutoRow(root, FormLayout.FlowRow(runBtn, cancelBtn));
+        var buttons = FormLayout.FlowRow(runBtn, cancelBtn);
+        buttons.Anchor = AnchorStyles.Right;   // right-aligned footer, like Cut Model / Initiate
+        FormLayout.AddAutoRow(root, buttons);
 
         Controls.Add(root);
+        Controls.Add(_status);
         CancelButton = cancelBtn;
         Theme.Apply(this);
         FormLayout.AlignLabels(this);
@@ -212,7 +214,7 @@ public sealed class ExportIfcWindow : Form
 
         // Fit the dialog to its contents, then refuse to go below it (see ExportNwcWindow).
         ClientSize = new Size(
-            Math.Max(ClientSize.Width, root.PreferredSize.Width), root.PreferredSize.Height);
+            Math.Max(ClientSize.Width, root.PreferredSize.Width), root.PreferredSize.Height + _status.Height);
         MinimumSize = Size;
 
         // Populate the saved sets and restore the last committed inputs (which also selects the
@@ -232,7 +234,7 @@ public sealed class ExportIfcWindow : Form
 
         // AFTER the restore, and kept fitted from then on — see ExportNwcWindow and
         // FormLayout.KeepFitted.
-        Action refit = FormLayout.KeepFitted(this, root);
+        Action refit = FormLayout.KeepFitted(this, root, _status);
         _coordinates.NoteChanged += refit;
     }
 
@@ -336,7 +338,7 @@ public sealed class ExportIfcWindow : Form
         if (dlg.ShowDialog(this) == DialogResult.OK) target.Text = dlg.SelectedPath;
     }
 
-    private void SetStatus(string text) => _status.Text = text;
+    private void SetStatus(string text) => _status.SetMessage(text);
 
     private sealed class NamedItem
     {

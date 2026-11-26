@@ -262,7 +262,7 @@ public static class BatchIdlingDriver
         if (error != null)
             lines.Add($"\n{error}");
 
-        TaskDialog.Show("KH Batch Script Runner", $"{title}\n\n" + string.Join("\n", lines));
+        TaskDialog.Show(Product.Name, $"{title}\n\n" + string.Join("\n", lines));
     }
 
     /// <summary>

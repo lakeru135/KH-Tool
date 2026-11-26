@@ -37,6 +37,11 @@ internal static class InteractiveSplit
     /// <param name="alwaysSupervise">Run even a set too small to split in ONE supervised child
     /// Revit, so a native crash there can never close this Revit (Batch Interop — see
     /// <see cref="SupervisedGroupSize"/>).</param>
+    /// <param name="actionConfirm">The command's own "are you sure" (what it will do), or null for a
+    /// command that never asked. For a real split it is MERGED with the split description into one
+    /// confirmation shown in the run window, so the user answers once. The command passes the same
+    /// object to <c>BatchRunnerWindow.RunModal</c> when this returns null, so either path asks
+    /// exactly the same question.</param>
     public static Result? TryLaunch(
         UIApplication uiApp,
         ScheduledJob baseJob,
@@ -45,17 +50,14 @@ internal static class InteractiveSplit
         string runLabel,
         BatchCompletion supervisorCompletion,
         string? blockedReason = null,
-        bool alwaysSupervise = false)
+        bool alwaysSupervise = false,
+        UI.RunConfirmation? actionConfirm = null)
     {
         if (!splitEnabled) return null;
 
-        if (blockedReason != null)
-        {
-            TaskDialog.Show("KH Batch Script Runner",
-                "Parallel groups skipped — " + blockedReason +
-                "\n\nRunning all models in this one Revit instead.");
-            return null;
-        }
+        // Refused for a correctness reason. The notice is no longer a dialog of its own: the caller
+        // folds it into its confirmation with NoteBlocked, so it reads in the window that then runs.
+        if (blockedReason != null) return null;
 
         // Derived here, not in the dialog: this is the first point where the model count is real
         // (a folder-backed set re-scans at resolve time). See InstanceBudget.AutoGroupSize.
@@ -65,41 +67,75 @@ internal static class InteractiveSplit
         if (groupSize <= 0) return null;
 
         bool realSplit = models.Count > groupSize;
+        string singleChildNote =
+            $"{runLabel} runs on {models.Count} model(s) in a separate Revit, so a crash in it " +
+            "can't close this one. A model that crashes Revit is retried once, then skipped.";
+
+        // One confirmation for the whole thing. A real split always asks (it opens several Revits);
+        // a lone supervised child asks only if the command itself did.
+        UI.RunConfirmation? confirm = null;
         if (realSplit)
         {
             int groups = ChunkLauncher.GroupCount(models.Count, groupSize);
-            var confirm = new TaskDialog("Run — parallel groups")
-            {
-                MainInstruction = $"Run {runLabel} on {models.Count} models as {groups} group(s) of up to {groupSize}?",
-                MainContent =
-                    "Each group opens in its own Revit instance and closes when it finishes. " +
-                    "Concurrency: " + InstanceBudget.Describe(models, weight) + ".\n\nContinue?",
-                CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
-                DefaultButton = TaskDialogResult.No
-            };
-            if (confirm.Show() != TaskDialogResult.Yes)
-                return Result.Cancelled;
+            string split =
+                $"Parallel: {groups} group(s) of up to {groupSize}. Each group opens in its own Revit " +
+                "instance and closes when it finishes. Concurrency: " +
+                InstanceBudget.Describe(models, weight) + ".";
+            confirm = actionConfirm == null
+                ? new UI.RunConfirmation(
+                    $"Run {runLabel} on {models.Count} models as {groups} group(s) of up to {groupSize}?",
+                    split, "Launch groups")
+                : actionConfirm with { Details = actionConfirm.Details + "\n\n" + split };
+        }
+        else if (actionConfirm != null)
+        {
+            confirm = actionConfirm with { Details = actionConfirm.Details + "\n\n" + singleChildNote };
         }
 
-        baseJob.GroupSize = groupSize;
-        RunManifest? manifest = ChunkLauncher.LaunchSupervised(
-            baseJob, models, groupSize, uiApp.Application.VersionNumber, out string? chunkErr);
-        if (manifest == null)
+        // Captured now: the launch runs from the window's Start click, after this command has
+        // returned, and the Revit Application object must not be touched then.
+        string revitVersion = uiApp.Application.VersionNumber;
+
+        UI.RunWatchWindow? window = UI.RunWatchWindow.ShowConfirm(
+            runLabel, confirm,
+            () =>
+            {
+                baseJob.GroupSize = groupSize;
+                RunManifest? manifest = ChunkLauncher.LaunchSupervised(
+                    baseJob, models, groupSize, revitVersion, out string? chunkErr);
+                if (manifest == null)
+                    return (null, chunkErr ?? "Could not launch any group instances.", null);
+
+                string note =
+                    (realSplit ? ChunkLauncher.DescribeLaunch(manifest, groupSize) : singleChildNote) +
+                    $"\n\nResults are written to one shared log under:\n{baseJob.DestinationFolder}\\Log" +
+                    (chunkErr != null ? $"\n\n{chunkErr}" : "");
+                return (manifest, null, note);
+            },
+            supervisorCompletion);
+        if (window == null)
         {
-            TaskDialog.Show("KH Batch Script Runner", chunkErr ?? "Could not launch any group instances.");
+            TaskDialog.Show(Product.Name, "Could not open the run window.");
             return Result.Failed;
         }
-
-        // Supervise: a group whose Revit dies would otherwise take its models with it, silently.
-        RunSupervisor.StartInteractive(manifest, supervisorCompletion);
-        TaskDialog.Show("KH Batch Script Runner",
-            (realSplit
-                ? ChunkLauncher.DescribeLaunch(manifest, groupSize)
-                : $"{runLabel} runs on {models.Count} model(s) in a separate Revit, so a crash in it " +
-                  "can't close this one. A model that crashes Revit is retried once, then skipped.") +
-            $"\n\nResults are written to one shared log under:\n{baseJob.DestinationFolder}\\Log" +
-            (chunkErr != null ? $"\n\n{chunkErr}" : ""));
         return Result.Succeeded;
+    }
+
+    /// <summary>
+    /// Folds "parallel groups were refused" into the confirmation a single-process run is about to
+    /// ask — the notice that used to be its own TaskDialog. Returns <paramref name="confirm"/>
+    /// unchanged when nothing was refused; makes a confirmation of its own when the command had none,
+    /// so the refusal is still said somewhere.
+    /// </summary>
+    internal static UI.RunConfirmation? NoteBlocked(
+        UI.RunConfirmation? confirm, string runLabel, string? blockedReason)
+    {
+        if (blockedReason == null) return confirm;
+        string note = "Parallel groups skipped — " + blockedReason +
+                      "\n\nRunning all models in this one Revit instead.";
+        return confirm == null
+            ? new UI.RunConfirmation($"Run {runLabel}?", note)
+            : confirm with { Details = confirm.Details + "\n\n" + note };
     }
 
     /// <summary>

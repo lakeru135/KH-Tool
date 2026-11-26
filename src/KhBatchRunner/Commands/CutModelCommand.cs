@@ -30,12 +30,12 @@ public sealed class CutModelCommand : IExternalCommand
         UIApplication uiApp = commandData.Application;
 
         List<ModelPreset> presets = PresetStore.LoadAll();
-        if (BatchCommandFlow.NoModelSets(presets, "KH Batch Script Runner", "Cut model"))
+        if (BatchCommandFlow.NoModelSets(presets, Product.Name, "Cut model"))
             return Result.Cancelled;
 
         CutModelWindow? dialog = BatchCommandFlow.TryCreateDialog(
             () => new CutModelWindow(presets, new DataManagementClient(new SessionTokenProvider())),
-            "KH Batch Script Runner", "Cut model");
+            Product.Name, "Cut model");
         if (dialog == null) return Result.Failed;
         using var _dlg = dialog;
         if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
@@ -49,22 +49,17 @@ public sealed class CutModelCommand : IExternalCommand
         if (target == null) return Result.Failed;
 
         // Preview + confirm — this publishes NEW cloud models, so make the plan explicit.
-        var confirm = new TaskDialog("Cut Model — Forma Batch Action")
-        {
-            MainInstruction = $"Cut {chosen.Models.Count} model(s) for site '{inputs.Prefix}'?",
-            MainContent =
-                $"Model set: {chosen.Name}\n" +
-                $"Site code: {inputs.Prefix} (activates the matching site location and becomes the name prefix)\n" +
-                $"Other site locations: {(inputs.DeleteOtherLocations ? "DELETED from the cut copy" : "kept")}\n" +
-                $"Target folder: {inputs.FolderPath}\n\n" +
-                (setNote != null ? setNote + "\n\n" : "") +
-                "Each model is cut on a local temp copy (the source is never modified) and " +
-                "published as a NEW cloud model in that folder. Continue?",
-            CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
-            DefaultButton = TaskDialogResult.No
-        };
-        if (confirm.Show() != TaskDialogResult.Yes)
-            return Result.Cancelled;
+        // Asked in the run window (Confirm state), not a TaskDialog — the same question whether the
+        // run then goes parallel or stays in this Revit.
+        var confirm = new RunConfirmation(
+            $"Cut {chosen.Models.Count} model(s) for site '{inputs.Prefix}'?",
+            $"Model set: {chosen.Name}\n" +
+            $"Site code: {inputs.Prefix} (activates the matching site location and becomes the name prefix)\n" +
+            $"Other site locations: {(inputs.DeleteOtherLocations ? "DELETED from the cut copy" : "kept")}\n" +
+            $"Target folder: {inputs.FolderPath}\n\n" +
+            (setNote != null ? setNote + "\n\n" : "") +
+            "Each model is cut on a local temp copy (the source is never modified) and " +
+            "published as a NEW cloud model in that folder.");
 
         var action = new CutModelAction(target, inputs.DeleteOtherLocations);
 
@@ -85,12 +80,14 @@ public sealed class CutModelCommand : IExternalCommand
                 DestinationFolder = inputs.DestinationFolder,
                 ProjectLogName = inputs.ProjectLogName
             },
-            chosen.Models, dialog.SplitEnabled, action.Name, dialog.SelectedCompletion);
+            chosen.Models, dialog.SplitEnabled, action.Name, dialog.SelectedCompletion,
+            actionConfirm: confirm);
         if (split.HasValue) return split.Value;
 
         // Modal message-loop runner, NOT BatchIdlingDriver — Cut model opens each SOURCE model
         // (often a Forma cloud model). See BatchCommandFlow.RunModal.
         return BatchCommandFlow.RunModal(uiApp, action, chosen, inputs.DestinationFolder,
-            inputs.ProjectLogName, dialog.SelectedCompletion, "KH Batch Script Runner", "Cut model");
+            inputs.ProjectLogName, dialog.SelectedCompletion, Product.Name, "Cut model",
+            confirm);
     }
 }

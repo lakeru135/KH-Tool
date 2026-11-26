@@ -56,6 +56,8 @@ internal sealed class NotifyCard : Form
 
     private readonly string _logPath;
     private readonly bool _canOpenLog;
+    private readonly string _resultPath;
+    private readonly bool _canOpenResult;
     private readonly Palette _palette;
     private readonly float _scale;
 
@@ -63,10 +65,15 @@ internal sealed class NotifyCard : Form
     /// the resting place has to be decided before the first frame is drawn.</summary>
     private int _restingTop;
 
-    internal NotifyCard(string appName, string title, string message, bool failed, string logPath, bool canOpenLog)
+    internal NotifyCard(string appName, string title, string message, bool failed, string logPath,
+                        bool canOpenLog, bool canOpenResult)
     {
         _logPath = logPath;
         _canOpenLog = canOpenLog;
+        // The destination folder is the parent of the log's own folder — derived, not passed, so no
+        // new environment variable is needed between the add-in and this process.
+        _resultPath = Program.ResultFolderOfLog(logPath) ?? "";
+        _canOpenResult = canOpenResult;
         _palette = Palette.ForCurrentTheme(failed);
         _scale = DetectScale();
 
@@ -118,21 +125,7 @@ internal sealed class NotifyCard : Form
             close.Click += (_, _) => Close();
             Controls.Add(close);
 
-            // The "more options" dots next to Close on a real toast — decorative only, since there
-            // is no settings menu behind it here. Left off the click-suppression list on purpose:
-            // it behaves like the rest of the header (opens the log), never a dead spot that looks
-            // interactive and does nothing.
-            var overflow = new Label
-            {
-                Text = "•••",
-                Font = Fonts.Caption(_scale),
-                ForeColor = _palette.Secondary,
-                AutoSize = false,
-                UseMnemonic = false,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Bounds = new Rectangle(close.Left - S(24), y - S(2), S(20), S(24))
-            };
-            Controls.Add(overflow);
+            // (A decorative "•••" used to sit beside Close. It looked like a menu and did nothing.)
 
             y += S(LogoSize) + S(10);
 
@@ -145,14 +138,24 @@ internal sealed class NotifyCard : Form
 
             y += S(14);
 
-            // Two equal halves, the way the guidance's Buttons example lays them out. With one
-            // action the button takes the full width rather than sitting half-empty.
-            int buttonCount = canOpenLog ? 2 : 1;
-            int buttonWidth = buttonCount == 2
-                ? (contentWidth - S(ButtonGap)) / 2
-                : contentWidth;
+            // Equal shares of the row, the way the guidance's Buttons example lays them out:
+            // Open result | Open log | Dismiss, collapsing to whichever are actually available.
+            // A lone Dismiss takes the full width rather than sitting half-empty.
+            int buttonCount = 1 + (canOpenLog ? 1 : 0) + (canOpenResult ? 1 : 0);
+            int buttonWidth = (contentWidth - S(ButtonGap) * (buttonCount - 1)) / buttonCount;
 
             int bx = contentLeft;
+            if (canOpenResult)
+            {
+                var openResult = new CardButton(_palette)
+                {
+                    Text = "Open result",
+                    Bounds = new Rectangle(bx, y, buttonWidth, S(ButtonHeight))
+                };
+                openResult.Click += (_, _) => OpenResultAndClose();
+                Controls.Add(openResult);
+                bx += buttonWidth + S(ButtonGap);
+            }
             if (canOpenLog)
             {
                 var open = new CardButton(_palette)
@@ -178,14 +181,15 @@ internal sealed class NotifyCard : Form
 
         // Clicking the card anywhere is the same as Open log — the whole card reads as the message,
         // so requiring the button would be a trap. Every non-button child needs it too, or a click
-        // on the text does nothing and the card looks broken.
-        if (canOpenLog)
+        // on the text does nothing and the card looks broken. (With no log to open, the body opens
+        // the result folder instead, if that is available.)
+        if (canOpenLog || canOpenResult)
         {
-            Click += (_, _) => OpenAndClose();
+            Click += (_, _) => BodyClicked();
             foreach (Control c in Controls)
             {
                 if (c is CardButton || c is GlyphButton) continue;
-                c.Click += (_, _) => OpenAndClose();
+                c.Click += (_, _) => BodyClicked();
                 c.Cursor = Cursors.Hand;
             }
             Cursor = Cursors.Hand;
@@ -297,6 +301,18 @@ internal sealed class NotifyCard : Form
     {
         if (_canOpenLog) Program.OpenLog(_logPath);
         Close();
+    }
+
+    private void OpenResultAndClose()
+    {
+        if (_canOpenResult) Program.OpenLog(_resultPath);
+        Close();
+    }
+
+    private void BodyClicked()
+    {
+        if (_canOpenLog) OpenAndClose();
+        else OpenResultAndClose();
     }
 
     /// <summary>

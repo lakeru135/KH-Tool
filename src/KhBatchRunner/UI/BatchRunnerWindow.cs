@@ -57,8 +57,17 @@ public sealed class BatchRunnerWindow : Form
     private readonly Label _statusLabel;
     private readonly ProgressBar _bar;
     private readonly TextBox _log;
+    private readonly RunConfirmPanel _confirmPanel;
+    private readonly RunFooter _footer;
     private readonly int _total;
     private bool _started;
+
+    /// <summary>
+    /// Set by <see cref="RunModal"/> when the window should ask before it starts (Confirm state).
+    /// Null runs straight away, as every unattended path does. Never set for an unattended run: a
+    /// confirm nobody can answer would hang the scheduled path.
+    /// </summary>
+    private RunConfirmation? _confirm;
 
     /// <summary>
     /// True when nobody is watching this run — the headless scheduled path reuses this window for
@@ -96,7 +105,11 @@ public sealed class BatchRunnerWindow : Form
         MinimizeBox = false;
         MaximizeBox = false;
         ShowInTaskbar = false;
-        ClientSize = new Size(720, 420);
+        // Font-based scaling like the other dialogs, so the larger type below grows with Windows
+        // display scaling instead of being clipped at 125%/150%.
+        AutoScaleDimensions = new SizeF(7F, 15F);
+        AutoScaleMode = AutoScaleMode.Font;
+        ClientSize = new Size(800, 500);
 
         // The bar spans the WHOLE run — every model of every pass — so it answers "how far through
         // the set am I", not "how far through this one action". A 3-model, 3-action run is 9 steps.
@@ -105,8 +118,9 @@ public sealed class BatchRunnerWindow : Form
         _statusLabel = new Label
         {
             Dock = DockStyle.Bottom,
-            Height = 24,
+            Height = 30,
             TextAlign = ContentAlignment.MiddleLeft,
+            Font = RunWindowFonts.Body(),
             Text = "Preparing…"
         };
 
@@ -119,43 +133,82 @@ public sealed class BatchRunnerWindow : Form
             Multiline = true,
             ReadOnly = true,
             ScrollBars = ScrollBars.Vertical,
-            Font = new Font(FontFamily.GenericMonospace, 8.5F),
+            Font = RunWindowFonts.Log(),
             BorderStyle = BorderStyle.FixedSingle
         };
 
+        // Confirm state: this panel sits where the log is until Start is pressed, so the question
+        // that used to be a Revit TaskDialog is asked in the window that then shows the progress.
+        _confirmPanel = new RunConfirmPanel { Visible = false };
+        _footer = new RunFooter(this);
+        _footer.StartClicked += (_, _) => RunOnce();
+        _footer.CancelClicked += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
+        _footer.CloseClicked += (_, _) => { DialogResult = DialogResult.OK; Close(); };
+        _footer.OpenLogRequested += (_, _) => RunResultPaths.OpenLog(FirstLogPath());
+        _footer.OpenResultRequested += (_, _) => RunResultPaths.OpenResult(FirstLogPath());
+        _footer.ShowRunning("Preparing…");
+
         var host = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12) };
         host.Controls.Add(_log);
+        host.Controls.Add(_confirmPanel);
         host.Controls.Add(_statusLabel);
         host.Controls.Add(_bar);
+        host.Controls.Add(_footer);
         Controls.Add(host);
 
         Theme.Apply(this);
 
         // Runs once the modal message loop is up (Shown fires after ShowDialog starts pumping).
-        Shown += (_, _) => RunOnce();
+        // With a confirmation the first thing shown is the question, and Start runs the same
+        // RunOnce from a Click handler — still inside this dialog's modal message loop, which is
+        // what cloud opens need (see the class remarks).
+        Shown += (_, _) =>
+        {
+            if (_confirm != null) EnterConfirm(_confirm);
+            else RunOnce();
+        };
+    }
+
+    /// <summary>The tracking log of the first pass — what Open log / Open result derive from.</summary>
+    private string FirstLogPath() => Results.Count > 0
+        ? Results[0].TrackingLogPath
+        : (_passes.Count > 0 ? _passes[0].Engine.TrackingLogPath : "");
+
+    private void EnterConfirm(RunConfirmation confirm)
+    {
+        _confirmPanel.Set(confirm);
+        _confirmPanel.Visible = true;
+        _log.Visible = false;
+        _bar.Visible = false;
+        _statusLabel.Text = "Review, then press " + confirm.StartText + ".";
+        _footer.ShowConfirm(confirm.StartText);
     }
 
     /// <summary>
     /// Runs <paramref name="passes"/> in a modal <see cref="BatchRunnerWindow"/> and shows a
     /// completion summary — the single entry point every interactive batch button uses. Returns the
     /// per-pass results (empty if nothing ran, or if "Close Revit" terminated the process first, in
-    /// which case this never returns). The summary is shown for Close files / Leave files open;
-    /// "Close Revit when complete" is inherently silent.
+    /// which case this never returns). The summary is shown for Close files / Leave files open —
+    /// inside this window, whose Done state replaces the old summary TaskDialog; "Close Revit when
+    /// complete" is inherently silent.
+    ///
+    /// <paramref name="confirm"/>, when given, makes the window open in its Confirm state: Start
+    /// runs the batch, Cancel returns empty results having run nothing. It is ignored for an
+    /// unattended run (<paramref name="showSummary"/> false), which has nobody to answer it.
     /// </summary>
     public static IReadOnlyList<PassResult> RunModal(
         UIApplication uiApp, IReadOnlyList<Pass> passes, string title, BatchCompletion completion,
-        bool showSummary = true, bool showProgress = true)
+        bool showSummary = true, bool showProgress = true, RunConfirmation? confirm = null)
     {
-        // Before any open: which cloud models are non-workshared, so the engine opens those with no
-        // workset configuration (the open that crashes Revit on them). Every batch that opens a cloud
-        // model comes through here — interactive, scheduled, and each supervised child alike.
-        Batch.CloudOpenFacts.RefreshFromForma(
-            passes.SelectMany(p => p.Preset.Models), TimeSpan.FromSeconds(15));
+        // (CloudOpenFacts.RefreshFromForma used to run here, before the window. It now runs at the
+        // start of RunOnce, so the window is on screen immediately and the up-to-15 s Forma lookup
+        // happens after Start, under "Preparing…".)
         using var runner = new BatchRunnerWindow(uiApp, passes, title, completion);
         // Suppressing the summary is the headless path's marker that no one is watching — the same
         // condition that lets the stall watchdog quit the process. Must be set before ShowDialog,
         // which is what raises Shown and starts the run.
         runner._unattended = !showSummary;
+        runner._confirm = showSummary ? confirm : null;
 
         // A CHILD of an auto-split run is unattended, and its window is pure noise: launching a
         // 5-group run put five progress dialogs on screen, each reporting only its own slice, while
@@ -173,23 +226,51 @@ public sealed class BatchRunnerWindow : Form
             runner.StartPosition = FormStartPosition.Manual;    // and nowhere near a monitor, so
             runner.Location = new Point(-32000, -32000);        // not even a first frame can flash
         }
+        LastRunCancelled = false;
         runner.ShowDialog();
-        // A headless scheduled run reuses this runner for Dynamo script jobs (the window
-        // dismisses itself) but must never end on a TaskDialog nobody can click.
-        if (runner.Ran && showSummary)
-            TaskDialog.Show("KH Batch Script Runner", runner.BuildSummaryText(title));
+        // Cancel at the Confirm state: nothing ran. Commands map this to Result.Cancelled, as the
+        // old TaskDialog's "No" did.
+        LastRunCancelled = !runner.Ran && runner.DialogResult == DialogResult.Cancel;
+        // Interactive runs show their summary in the window's Done state, so no dialog follows. The
+        // one exception is "Close Revit when complete" whose shutdown was refused: that window
+        // closed itself and Revit is still here, so say what happened (as before). A headless
+        // scheduled run (showSummary false) must never end on a TaskDialog nobody can click.
+        if (runner.Ran && showSummary && completion == BatchCompletion.CloseRevit)
+            TaskDialog.Show(Product.Name, runner.BuildSummaryText(title));
         return runner.Results;
     }
 
+    /// <summary>True when the most recent <see cref="RunModal(UIApplication, IReadOnlyList{Pass}, string, BatchCompletion, bool, bool, RunConfirmation?)"/>
+    /// ended because the user pressed Cancel in the Confirm state (nothing ran). UI thread only.</summary>
+    public static bool LastRunCancelled { get; private set; }
+
     /// <summary>Single-pass overload of <see cref="RunModal(UIApplication, IReadOnlyList{Pass}, string, BatchCompletion)"/>.</summary>
     public static IReadOnlyList<PassResult> RunModal(
-        UIApplication uiApp, BatchEngine engine, ModelPreset preset, string title, BatchCompletion completion) =>
-        RunModal(uiApp, new[] { new Pass(engine, preset) }, title, completion);
+        UIApplication uiApp, BatchEngine engine, ModelPreset preset, string title, BatchCompletion completion,
+        RunConfirmation? confirm = null) =>
+        RunModal(uiApp, new[] { new Pass(engine, preset) }, title, completion, confirm: confirm);
 
     private void RunOnce()
     {
         if (_started) return;
         _started = true;
+
+        // Leave the Confirm state (no-op when there was none): the question is answered, the
+        // progress furniture takes its place. Painted before the Forma lookup below, which can
+        // block this thread for a while.
+        _confirmPanel.Visible = false;
+        _log.Visible = true;
+        _bar.Visible = true;
+        _footer.ShowRunning();
+        _statusLabel.Text = "Preparing…";
+        Refresh();
+
+        // Before any open: which cloud models are non-workshared, so the engine opens those with no
+        // workset configuration (the open that crashes Revit on them). Every batch that opens a cloud
+        // model comes through here — interactive, scheduled, and each supervised child alike. Moved
+        // here from RunModal so the window (and its Confirm state) is up before the wait.
+        Batch.CloudOpenFacts.RefreshFromForma(
+            _passes.SelectMany(p => p.Preset.Models), TimeSpan.FromSeconds(15));
 
         // Say that it started. Withheld from interactive runs until 1.3.5 on the reasoning that the
         // button had just been pressed — which misreads how a batch is used: you start a long run
@@ -242,6 +323,21 @@ public sealed class BatchRunnerWindow : Form
             // evidence of it first rather than letting it vanish.
             RunTrace.Mark("batch ABORTED: " + ex.Message);
             Logging.RunNote.Write(watchLog, watchTitle, "", "ERROR", "Run aborted: " + ex.Message);
+            // An interactive window has no ControlBox, so without this it would sit on "Running…"
+            // forever behind the error. Say so and hand over a Close button.
+            if (!_unattended)
+            {
+                AppendLog("Run aborted: " + ex.Message);
+                _statusLabel.Text = "Run aborted — see the log.";
+                _footer.ShowDone(RunResultPaths.CanOpenLog(watchLog), RunResultPaths.CanOpenResult(watchLog));
+            }
+            else
+            {
+                // Hidden split-child / headless window: nobody can press Close, so end the dialog
+                // here or it stays open (invisible) forever.
+                DialogResult = DialogResult.Cancel;
+                Close();
+            }
             throw;
         }
         finally
@@ -249,8 +345,20 @@ public sealed class BatchRunnerWindow : Form
             RunTrace.StopWatchdog();
         }
 
-        DialogResult = DialogResult.OK;
-        Close();
+        // An interactive run that leaves Revit open keeps this window as its result screen (Done
+        // state: summary in the log, Open result / Open log / Close) instead of closing and raising
+        // a summary TaskDialog. Unattended runs and "Close Revit" still close at once: nobody is
+        // there to press Close, or Revit is about to exit.
+        bool staysOpen = !_unattended && _completion != BatchCompletion.CloseRevit;
+        if (staysOpen)
+        {
+            EnterDone();
+        }
+        else
+        {
+            DialogResult = DialogResult.OK;
+            Close();
+        }
 
         // Say so in Notification Center. Every batch ends here — the ribbon buttons, "Run now", and
         // the scheduled path all finish in this window — so this is the one place that cannot be
@@ -262,8 +370,13 @@ public sealed class BatchRunnerWindow : Form
         // Unattended runs are excluded: the scheduled runner and the split-run supervisor raise
         // their own final message once retries are settled, and that one is authoritative. Two
         // toasts disagreeing about the same run is worse than one arriving late.
+        //
+        // Waited for only when this process is about to go away. A window that stays open must not
+        // freeze on its Done screen while the toast helper starts, and Revit outlives a fire-and-
+        // forget delivery thread anyway.
         if (!_unattended && Ran)
-            RunNotification.ShowRunFinished(Text, TotalSucceeded, TotalFailed, Results[0].TrackingLogPath);
+            RunNotification.ShowRunFinished(Text, TotalSucceeded, TotalFailed,
+                Results[0].TrackingLogPath, wait: !staysOpen);
 
         if (_completion == BatchCompletion.CloseRevit)
         {
@@ -272,6 +385,17 @@ public sealed class BatchRunnerWindow : Form
             WriteSummaryRows();
             Schedule.RevitShutdown.RequestCurrent("modal batch complete");
         }
+    }
+
+    /// <summary>Done state: the old summary dialog's text goes into the log pane, and the footer
+    /// offers Open result / Open log / Close.</summary>
+    private void EnterDone()
+    {
+        AppendLog("");
+        AppendLog(BuildSummaryText(Text).TrimEnd());
+        string log = Results.Count > 0 ? Results[0].TrackingLogPath : "";
+        _statusLabel.Text = $"Done — {TotalSucceeded} succeeded, {TotalFailed} failed.";
+        _footer.ShowDone(RunResultPaths.CanOpenLog(log), RunResultPaths.CanOpenResult(log));
     }
 
     /// <summary>

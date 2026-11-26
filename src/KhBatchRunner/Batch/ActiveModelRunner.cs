@@ -37,13 +37,13 @@ public static class ActiveModelRunner
         Document? doc = uiApp.ActiveUIDocument?.Document;
         if (doc == null)
         {
-            TaskDialog.Show("KH Batch Script Runner",
+            TaskDialog.Show(Product.Name,
                 "No model is open.\n\nOpen a project model first, or untick \"Run on active model\".");
             return false;
         }
         if (doc.IsFamilyDocument)
         {
-            TaskDialog.Show("KH Batch Script Runner",
+            TaskDialog.Show(Product.Name,
                 "This runs on project models only — the active document is a family.");
             return false;
         }
@@ -58,7 +58,7 @@ public static class ActiveModelRunner
         }
         catch (Exception ex)
         {
-            TaskDialog.Show("KH Batch Script Runner", $"\"{action.Name}\" failed on this model:\n\n{ex.Message}");
+            TaskDialog.Show(Product.Name, $"\"{action.Name}\" failed on this model:\n\n{ex.Message}");
             return true;
         }
 
@@ -69,7 +69,7 @@ public static class ActiveModelRunner
             try { action.OnRunComplete(); }
             catch (Exception ex)
             {
-                TaskDialog.Show("KH Batch Script Runner",
+                TaskDialog.Show(Product.Name,
                     $"\"{action.Name}\" ran, but finishing its output failed:\n\n{ex.Message}");
             }
         }

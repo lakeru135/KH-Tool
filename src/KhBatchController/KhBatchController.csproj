@@ -81,9 +81,11 @@
          the part the controller should own. Three are excluded — ScheduledRunner (drives BatchEngine
          inside Revit), InteractiveSplit (a ribbon command's confirm-and-launch step, in Revit
          TaskDialogs and Results), and RelinkSplitGuard (plain data, but over RelinkTarget, which
-         lives with the Revit-only relink action). ScheduledRunner is a partial class: all its files
+         lives with the Revit-only relink action). ShutdownDialogAnswers is excluded too: it hooks
+         Revit's DialogBoxShowing for an unattended child's exit and uses Autodesk.Revit.UI types.
+         ScheduledRunner is a partial class: all its files
          are excluded. -->
-    <Compile Include="..\KhBatchRunner\Schedule\**\*.cs" Exclude="..\KhBatchRunner\Schedule\ScheduledRunner.cs;..\KhBatchRunner\Schedule\ScheduledRunner.Lifecycle.cs;..\KhBatchRunner\Schedule\ScheduledRunner.JobPasses.cs;..\KhBatchRunner\Schedule\InteractiveSplit.cs;..\KhBatchRunner\Schedule\RelinkSplitGuard.cs" Link="Shared\Schedule\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\KhBatchRunner\Schedule\**\*.cs" Exclude="..\KhBatchRunner\Schedule\ScheduledRunner.cs;..\KhBatchRunner\Schedule\ScheduledRunner.Lifecycle.cs;..\KhBatchRunner\Schedule\ScheduledRunner.JobPasses.cs;..\KhBatchRunner\Schedule\InteractiveSplit.cs;..\KhBatchRunner\Schedule\RelinkSplitGuard.cs;..\KhBatchRunner\Schedule\ShutdownDialogAnswers.cs" Link="Shared\Schedule\%(RecursiveDir)%(Filename)%(Extension)" />
 
     <Compile Include="..\KhBatchRunner\Settings\UserSettings.cs" Link="Shared\Settings\UserSettings.cs" />
 
@@ -101,9 +103,14 @@
     <Compile Include="..\KhBatchRunner\UI\RunWatchWindow.cs" Link="Shared\UI\RunWatchWindow.cs" />
     <!-- The retained Notification Center toast RunWatchWindow raises. No Revit dependency. -->
     <Compile Include="..\KhBatchRunner\UI\RunNotification.cs" Link="Shared\UI\RunNotification.cs" />
+    <!-- The confirm panel / footer buttons / result-folder rule RunWatchWindow and RunNotification
+         share with BatchRunnerWindow. WinForms only, no Revit. -->
+    <Compile Include="..\KhBatchRunner\UI\RunWindowParts.cs" Link="Shared\UI\RunWindowParts.cs" />
     <Compile Include="..\KhBatchRunner\UI\Icons.cs" Link="Shared\UI\Icons.cs" />
     <Compile Include="..\KhBatchRunner\UI\FormLayout.cs" Link="Shared\UI\FormLayout.cs" />
+    <Compile Include="..\KhBatchRunner\UI\UiText.cs" Link="Shared\UI\UiText.cs" />
     <Compile Include="..\KhBatchRunner\UI\CheckListBehavior.cs" Link="Shared\UI\CheckListBehavior.cs" />
+    <Compile Include="..\KhBatchRunner\UI\InputSetActions.cs" Link="Shared\UI\InputSetActions.cs" />
     <!-- The Forma model list both pickers share: columns for Revit year and model type, and the
          greying that stops an unrunnable model being chosen. -->
     <Compile Include="..\KhBatchRunner\UI\ModelCheckGrid.cs" Link="Shared\UI\ModelCheckGrid.cs" />

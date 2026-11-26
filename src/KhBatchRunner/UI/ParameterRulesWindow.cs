@@ -585,7 +585,7 @@ public sealed class FormulaRuleDialog : Form
         catch (Exception ex) { (ok, msg) = (false, "Could not check this rule: " + ex.Message); }
         _checkOk = ok;
         _check.Text = msg;
-        _check.ForeColor = ok ? Theme.Dim(_check) : Color.Firebrick;
+        _check.ForeColor = ok ? Theme.Dim(ForeColor, _check.BackColor) : Theme.ErrorColor(_check);
         FitHeight();
     }
 

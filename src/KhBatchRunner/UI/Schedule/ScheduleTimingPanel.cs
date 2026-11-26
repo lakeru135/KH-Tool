@@ -51,7 +51,9 @@ internal sealed class ScheduleTimingPanel : TableLayoutPanel
 
         FlowLayoutPanel topFields = FormLayout.FlowRow(
             Lbl("Name:"), _nameBox, Lbl("Recurrence:"), _recurCombo,
-            Lbl("Date:"), _datePicker, Lbl("Time:"), _timePicker);
+            Lbl("Date:"), _datePicker,
+            // Label + picker in one non-wrapping unit, so "Time:" never strands from its field.
+            FormLayout.FlowRow(Lbl("Time:"), _timePicker));
         topFields.Dock = DockStyle.Fill;
         topFields.WrapContents = true;
 

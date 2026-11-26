@@ -65,8 +65,90 @@ public sealed class DimmableCheckedListBox : CheckedListBox
                                       Theme.Dim(e.ForeColor, e.BackColor), e.BackColor);
         }
 
+        QueueSync();
         base.OnDrawItem(e);
     }
+
+    // ---- Horizontal scrolling for long labels --------------------------------------------------
+    // ListBox/CheckedListBox never raise OnPaint (no UserPaint), so the extent is synced from the
+    // places that DO fire: handle creation, font/DPI change, and DrawItem (which only QUEUES one
+    // deferred sync, never resizing mid-draw). The sync skips the measuring unless the item list
+    // changed (count + total text length), so large model lists are not re-measured on every paint.
+    private bool _syncQueued;
+    private int _lastSignature = -1;
+
+    public DimmableCheckedListBox() => HorizontalScrollbar = true;
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        _syncQueued = false; // a BeginInvoke lost across a handle recreate must not freeze updates
+        _lastSignature = -1;
+        SyncExtent();
+    }
+
+    protected override void OnHandleDestroyed(EventArgs e)
+    {
+        _syncQueued = false;
+        base.OnHandleDestroyed(e);
+    }
+
+    protected override void OnFontChanged(EventArgs e)
+    {
+        base.OnFontChanged(e);
+        _lastSignature = -1;
+        if (IsHandleCreated) SyncExtent();
+    }
+
+    protected override void OnDpiChangedAfterParent(EventArgs e)
+    {
+        base.OnDpiChangedAfterParent(e);
+        _lastSignature = -1;
+        if (IsHandleCreated) SyncExtent();
+    }
+
+    private void QueueSync()
+    {
+        if (_syncQueued || !IsHandleCreated) return;
+        _syncQueued = true;
+        BeginInvoke((Action)(() => { _syncQueued = false; SyncExtent(); }));
+    }
+
+    private int _widestText;
+
+    // Re-sync when the client width changes: a vertical bar appearing or disappearing changes the
+    // room available (ClientSize already excludes it).
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        if (IsHandleCreated) SyncExtent();
+    }
+
+    private void SyncExtent()
+    {
+        if (IsDisposed) return;
+        // Hash of the actual texts (so a same-length relabel is caught); manual combine is net48-safe.
+        int signature = Items.Count;
+        foreach (object item in Items) signature = unchecked(signature * 31 + StringComparer.Ordinal.GetHashCode(GetItemText(item)));
+        if (signature != _lastSignature)
+        {
+            _lastSignature = signature;
+            const TextFormatFlags flags = TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine;
+            int widest = 0;
+            foreach (object item in Items)
+                widest = Math.Max(widest, TextRenderer.MeasureText(GetItemText(item), Font, new Size(int.MaxValue, int.MaxValue), flags).Width);
+            _widestText = widest;
+        }
+
+        // Drawn row width = check glyph + the gap the base control leaves + text (+ a little slack for
+        // the focus rectangle). Only a row that really overflows gets an extent; otherwise 0, so no bar.
+        using Graphics g = CreateGraphics();
+        int glyph = CheckBoxRenderer.GetGlyphSize(g, System.Windows.Forms.VisualStyles.CheckBoxState.UncheckedNormal).Width;
+        int rowWidth = glyph + 4 + _widestText + 4;
+        int extent = rowWidth > ClientSize.Width ? rowWidth : 0;
+        if (HorizontalExtent != extent) HorizontalExtent = extent;
+    }
+
 
     /// <summary>The predicate is supplied by a caller and runs inside a paint; a throw there would
     /// tear down the window rather than lose one row's colour.</summary>

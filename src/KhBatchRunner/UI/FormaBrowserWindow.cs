@@ -21,7 +21,6 @@ public sealed class FormaBrowserWindow : Form
     private readonly ModelCheckGrid _modelsList;
     private readonly ListBox _folderList;
     private readonly ListBox _presetList;
-    private readonly TextBox _nameBox;
     private readonly CheckBox _folderSubfoldersCheck;
     private readonly StatusLine _status;
 
@@ -32,6 +31,11 @@ public sealed class FormaBrowserWindow : Form
     // Stable id of the set currently loaded for editing — preserved across a rename so schedules
     // that reference this set by id keep pointing at it (see ModelPreset.Id / ScheduledJob.ModelSetIds).
     private string? _loadedSetId;
+    // The saved set the editable combo currently stands on. The combo's TEXT is the set's name (what
+    // Save reads), and assigning Text drops SelectedItem, so the preset is tracked here instead.
+    private ModelPreset? _comboPreset;
+    // True while this window itself moves the combo (refresh / naming it), so that does not load a set.
+    private bool _syncingCombo;
 
     /// <summary>The Forma folder whose models are currently listed — what "Copy scan details" reads.
     /// Null until a folder is picked in the tree.</summary>
@@ -79,34 +83,40 @@ public sealed class FormaBrowserWindow : Form
         };
         right.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        var setsLabel = new Label { Text = "Saved model sets:", AutoSize = true, Margin = new Padding(3, 6, 3, 2) };
-        _setsCombo = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
+        // One editable combo + Save / Duplicate / Delete — the shared saved-set pattern (as
+        // CutModelWindow's InputSetActions). Not InputSetActions<T> itself: this window's items are
+        // labelled "name (N models)" + the account verdict, sets carry a stable Id across renames, and
+        // Save re-scans folder sources, so only the UI shape is shared. Picking a set loads it.
+        var setsLabel = new Label { Text = "Saved model set:", AutoSize = true, Margin = new Padding(3, 6, 3, 2) };
+        _setsCombo = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDown };
         ModelSetAccess.AttachGreying(_setsCombo, i => (i as SetItem)?.Preset,
             // Rebuild, not just repaint: the ORDER depends on the verdict too, and it is fixed at
             // populate time. RefreshSetsCombo keeps the current selection.
             onSnapshotReady: () => RefreshSetsCombo());
+        _setsCombo.SelectedIndexChanged += (_, _) =>
+        {
+            if (_syncingCombo || _setsCombo.SelectedItem is not SetItem) return;
+            LoadSelectedSet();
+        };
         var newSetBtn = new Button { Text = "New", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(56, 0) };
         newSetBtn.Click += (_, _) => NewSet();
-        var loadSetBtn = new Button { Text = "Load", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(56, 0) };
-        loadSetBtn.Click += (_, _) => LoadSelectedSet();
+        var saveSetBtn = new Button { Text = "Save set", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(80, 0) };
+        saveSetBtn.Click += (_, _) => SavePreset();
         var dupSetBtn = new Button { Text = "Duplicate", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(80, 0) };
         dupSetBtn.Click += (_, _) => DuplicateSelectedSet();
-        var deleteSetBtn = new Button { Text = "Delete", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(64, 0) };
+        var deleteSetBtn = new Button { Text = "Delete", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(70, 0) };
         deleteSetBtn.Click += (_, _) => DeleteSelectedSet();
-        // combo (stretch) + New/Load/Duplicate/Delete, on one auto-height row.
+        // combo (stretch) + New/Save set/Duplicate/Delete, on one auto-height row.
         var setsRow = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, ColumnCount = 5, AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(0)
         };
         setsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        setsRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        setsRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        setsRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        setsRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        for (int i = 0; i < 4; i++) setsRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         setsRow.Controls.Add(_setsCombo, 0, 0);
         setsRow.Controls.Add(newSetBtn, 1, 0);
-        setsRow.Controls.Add(loadSetBtn, 2, 0);
+        setsRow.Controls.Add(saveSetBtn, 2, 0);
         setsRow.Controls.Add(dupSetBtn, 3, 0);
         setsRow.Controls.Add(deleteSetBtn, 4, 0);
 
@@ -174,29 +184,13 @@ public sealed class FormaBrowserWindow : Form
         moveDownButton.Click += (_, _) => MoveSelected(1);
         var presetButtons = FormLayout.FlowRow(removeButton, moveUpButton, moveDownButton);
 
-        // Set name (the project/log name is chosen at run time — Batch Run / Schedule / a Check —
-        // so the set itself no longer carries a project code).
-        var nameLabel = new Label { Text = "Set name:", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 3) };
-        _nameBox = new TextBox { Width = 240, Anchor = AnchorStyles.Left, Margin = new Padding(3, 4, 3, 3) };
-        var nameCodeGrid = new TableLayoutPanel
-        {
-            AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 2, RowCount = 1, Margin = new Padding(0)
-        };
-        nameCodeGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        nameCodeGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        nameCodeGrid.Controls.Add(nameLabel, 0, 0);
-        nameCodeGrid.Controls.Add(_nameBox, 1, 0);
-
-        var saveButton = new Button { Text = "Save set", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(110, 0) };
-        saveButton.Click += (_, _) => SavePreset();
         var closeButton = new Button
         {
             Text = "Close", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
             MinimumSize = new Size(84, 0), DialogResult = DialogResult.OK
         };
-        // Save + Close, right-aligned on their row.
-        var bottomButtons = FormLayout.FlowRow(saveButton, closeButton);
+        // Close, right-aligned on its row (Save set lives with the saved-set row at the top).
+        var bottomButtons = FormLayout.FlowRow(closeButton);
         bottomButtons.Anchor = AnchorStyles.Right;
 
         // Assemble rows top-to-bottom; the two lists share the leftover height 50/50.
@@ -211,7 +205,6 @@ public sealed class FormaBrowserWindow : Form
         FormLayout.AddAutoRow(right,presetLabel);
         FormLayout.AddFillRow(right,_presetList, 40);
         FormLayout.AddAutoRow(right,presetButtons);
-        FormLayout.AddAutoRow(right,nameCodeGrid);
         FormLayout.AddAutoRow(right,bottomButtons);
 
         split.Panel2.Controls.Add(right);
@@ -246,24 +239,61 @@ public sealed class FormaBrowserWindow : Form
 
     private void RefreshSetsCombo()
     {
-        string? keep = (_setsCombo.SelectedItem as SetItem)?.Preset.Name;
-        _setsCombo.Items.Clear();
-        foreach (ModelPreset p in ModelSetAccess.Ordered(PresetStore.LoadAll()))
-            _setsCombo.Items.Add(new SetItem(p));
-        if (keep != null)
+        string? keep = _comboPreset?.Name;
+        string typed = _setsCombo.Text;
+        _syncingCombo = true;
+        try
         {
-            for (int i = 0; i < _setsCombo.Items.Count; i++)
-                if (((SetItem)_setsCombo.Items[i]).Preset.Name == keep) { _setsCombo.SelectedIndex = i; break; }
+            _setsCombo.Items.Clear();
+            foreach (ModelPreset p in ModelSetAccess.Ordered(PresetStore.LoadAll()))
+                _setsCombo.Items.Add(new SetItem(p));
+
+            // Re-find the set the combo stood on; it may be gone from the store by now.
+            _comboPreset = null;
+            if (keep != null)
+            {
+                for (int i = 0; i < _setsCombo.Items.Count; i++)
+                    if (_setsCombo.Items[i] is SetItem si && si.Preset.Name == keep)
+                    {
+                        _setsCombo.SelectedIndex = i;
+                        _comboPreset = si.Preset;
+                        break;
+                    }
+            }
+            // The user's own text always wins over the item label that selecting an index shows. This
+            // also runs from the (asynchronous) account-snapshot callback, so a rename in progress must
+            // survive it rather than snap back to the old name.
+            if (typed.Length > 0 || _comboPreset == null) _setsCombo.Text = typed;
+            else _setsCombo.Text = keep ?? "";
         }
+        finally { _syncingCombo = false; }
     }
+
+    /// <summary>Sets the combo's text to the set name (a set's items read "name (N models)", but Save
+    /// takes the name from the text) without that loading anything.</summary>
+    private void ShowSetName(string name)
+    {
+        _syncingCombo = true;
+        try { _setsCombo.Text = name; }
+        finally { _syncingCombo = false; }
+    }
+
+    /// <summary>The saved set the combo stands on, or null when its text has been edited away from
+    /// that set's name (then Duplicate/Delete have nothing to act on, as in the shared pattern).</summary>
+    private ModelPreset? ComboPreset() =>
+        _comboPreset != null &&
+        _setsCombo.Text.Trim().Equals(_comboPreset.Name, StringComparison.OrdinalIgnoreCase)
+            ? _comboPreset : null;
 
     private void NewSet()
     {
         _presetList.Items.Clear();
         _folderList.Items.Clear();
         _folderSubfoldersCheck.Checked = false;
-        _nameBox.Text = "";
-        _setsCombo.SelectedIndex = -1;
+        _syncingCombo = true;
+        try { _setsCombo.SelectedIndex = -1; _setsCombo.Text = ""; }
+        finally { _syncingCombo = false; }
+        _comboPreset = null;
         _loadedSetName = null;
         _loadedSetId = null;
         SetStatus("New set — add Forma and/or local models (or folder sources), name it, then Save set.");
@@ -283,23 +313,25 @@ public sealed class FormaBrowserWindow : Form
         foreach (Forma.FolderRef f in item.Preset.AllSourceFolders)
             _folderList.Items.Add(new FolderItem(f));
         _folderSubfoldersCheck.Checked = item.Preset.IncludeSubfolders;
-        _nameBox.Text = item.Preset.Name;
+        _comboPreset = item.Preset;
+        ShowSetName(item.Preset.Name);
         _loadedSetName = item.Preset.Name;
         _loadedSetId = item.Preset.Id;
         SetStatus(item.Preset.IsFolderBacked
             ? $"Loaded FOLDER set '{item.Preset.Name}' ({_folderList.Items.Count} folder source(s)). " +
               "Members re-scan at run time; 'Set models' shows the last snapshot. Save set re-scans and updates it."
-            : $"Loaded '{item.Preset.Name}' ({item.Preset.Models.Count} models). Edit and Save set.");
+            : $"Loaded '{item.Preset.Name}' ({UiText.Plural(item.Preset.Models.Count, "model")}). Edit and Save set.");
     }
 
     /// <summary>Clones the selected saved set to a new uniquely-named copy, then loads it for editing.</summary>
     private void DuplicateSelectedSet()
     {
-        if (_setsCombo.SelectedItem is not SetItem item)
+        if (ComboPreset() is not ModelPreset source)
         {
             SetStatus("Pick a saved set to duplicate.");
             return;
         }
+        var item = new SetItem(source);
         string newName = UniqueSetName(item.Preset.Name);
         var copy = new ModelPreset
         {
@@ -317,9 +349,15 @@ public sealed class FormaBrowserWindow : Form
             SetStatus("Could not duplicate set: " + ex.Message.Split('\n')[0]);
             return;
         }
+        _comboPreset = null; // rebuild, then land on the copy and load it
         RefreshSetsCombo();
-        for (int i = 0; i < _setsCombo.Items.Count; i++)
-            if (((SetItem)_setsCombo.Items[i]).Preset.Name == newName) { _setsCombo.SelectedIndex = i; break; }
+        _syncingCombo = true;
+        try
+        {
+            for (int i = 0; i < _setsCombo.Items.Count; i++)
+                if (_setsCombo.Items[i] is SetItem si && si.Preset.Name == newName) { _setsCombo.SelectedIndex = i; break; }
+        }
+        finally { _syncingCombo = false; }
         LoadSelectedSet();
         SetStatus($"Duplicated '{item.Preset.Name}' as '{newName}'. Rename and Save set if you like.");
     }
@@ -330,11 +368,12 @@ public sealed class FormaBrowserWindow : Form
 
     private void DeleteSelectedSet()
     {
-        if (_setsCombo.SelectedItem is not SetItem item)
+        if (ComboPreset() is not ModelPreset target)
         {
             SetStatus("Pick a saved set to delete.");
             return;
         }
+        var item = new SetItem(target);
         if (MessageBox.Show(this, $"Delete model set '{item.Preset.Name}'?", "Delete set",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
             return;
@@ -344,7 +383,9 @@ public sealed class FormaBrowserWindow : Form
             _loadedSetName = null;
             _loadedSetId = null;
         }
+        _comboPreset = null;
         RefreshSetsCombo();
+        ShowSetName("");
         SetStatus($"Deleted '{item.Preset.Name}'.");
     }
 
@@ -512,10 +553,10 @@ public sealed class FormaBrowserWindow : Form
 
     private void SavePreset()
     {
-        string name = _nameBox.Text.Trim();
+        string name = _setsCombo.Text.Trim();
         if (string.IsNullOrWhiteSpace(name))
         {
-            MessageBox.Show(this, "Enter a set name.", "Save set",
+            MessageBox.Show(this, "Type a set name (in the Saved model set box), then Save set.", "Save set",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -566,13 +607,17 @@ public sealed class FormaBrowserWindow : Form
 
         bool renaming = _loadedSetName != null && !string.Equals(_loadedSetName, name, StringComparison.OrdinalIgnoreCase);
 
-        // Renaming onto the name of a different existing set would overwrite it — confirm first.
-        if (renaming && PresetStore.LoadAll().Any(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)))
+        // Saving onto the name of a DIFFERENT existing set (a new set, or a rename) would overwrite
+        // it — confirm first, and keep that set's Id so schedules that reference it by id stay valid.
+        ModelPreset? existing = PresetStore.LoadAll().FirstOrDefault(p =>
+            string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (existing != null && (_loadedSetName == null || renaming))
         {
             if (MessageBox.Show(this,
-                    $"A set named '{name}' already exists. Overwrite it?", "Rename set",
+                    $"A set named '{name}' already exists. Overwrite it?", renaming ? "Rename set" : "Save set",
                     MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
                 return;
+            if (!string.IsNullOrEmpty(existing.Id)) preset.Id = existing.Id;
         }
 
         try
@@ -580,7 +625,7 @@ public sealed class FormaBrowserWindow : Form
             PresetStore.Save(preset);
             // Presets are keyed by file name, so a name change must delete the old file or it
             // lingers as a duplicate — this is what makes "load, change the name, Save" a rename.
-            if (renaming) PresetStore.Delete(_loadedSetName!);
+            if (renaming && !SetFileName.Same(_loadedSetName!, name)) PresetStore.Delete(_loadedSetName!);
             _loadedSetName = name;
             _loadedSetId = preset.Id;
 
@@ -592,6 +637,7 @@ public sealed class FormaBrowserWindow : Form
                     _presetList.Items.Add(FormaModelItem.FromCloudModel(m));
             }
 
+            _comboPreset = preset;
             RefreshSetsCombo();
             string verb = renaming ? "Renamed to" : "Saved set";
             string kind = folderBacked
@@ -669,7 +715,7 @@ public sealed class FormaBrowserWindow : Form
         // gets fixed or deleted, so hiding it here would remove the only place it can be dealt with.
         public override string ToString() => ModelSetAccess.Label(Preset, Preset.IsFolderBacked
             ? $"{Preset.Name}  [{Preset.AllSourceFolders.Count} folder(s)]"
-            : $"{Preset.Name}  ({Preset.Models.Count} models)");
+            : $"{Preset.Name}  ({UiText.Plural(Preset.Models.Count, "model")})");
     }
 
     /// <summary>List item for a folder source: shows the folder path, keeps the FolderRef.</summary>

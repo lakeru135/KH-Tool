@@ -315,7 +315,7 @@ public sealed class CutModelWindow : Form
         public ModelPreset Preset { get; }
         public PresetItem(ModelPreset preset) => Preset = preset;
         public override string ToString() =>
-            ModelSetAccess.Label(Preset, $"{Preset.Name}  ({Preset.Models.Count} models)");
+            ModelSetAccess.Label(Preset, $"{Preset.Name}  ({UiText.Plural(Preset.Models.Count, "model")})");
     }
 
     private sealed class SetItem

@@ -25,6 +25,11 @@ public sealed class BatchRunWindow : Form
     private readonly ComboBox _cutModelSetCombo;
     private readonly ComboBox _exportNwcSetCombo;
     private readonly ComboBox _exportIfcSetCombo;
+    private Action? _refit; // FormLayout.KeepFitted's refit — rows appearing need room
+    private readonly Control _initiateRow;
+    private readonly Control _cutModelRow;
+    private readonly Control _exportNwcRow;
+    private readonly Control _exportIfcRow;
     private readonly ComboBox _syncCombo;
     private readonly ComboBox _completionCombo;
     private readonly TextBox _folderBox;
@@ -123,7 +128,9 @@ public sealed class BatchRunWindow : Form
         adHocButtons.WrapContents = true;
 
         // --- Actions + script sets (reorderable — list order is run order) ---
-        _actionsScriptsList = new CheckedListBox { Dock = DockStyle.Fill, CheckOnClick = true, IntegralHeight = false };
+        // DimmableCheckedListBox for its horizontal scrollbar: a long script-set name is otherwise cut
+        // off at the column edge with no way to read it. Nothing is dimmed here (no DimWhere).
+        _actionsScriptsList = new DimmableCheckedListBox { Dock = DockStyle.Fill, CheckOnClick = true, IntegralHeight = false };
         foreach (IBatchAction a in ActionRegistry.All())
             _actionsScriptsList.Items.Add(new ActionOrScriptItem(a.Name, isScriptSet: false));
 #if !EDITION_DRW
@@ -262,10 +269,16 @@ public sealed class BatchRunWindow : Form
         FormLayout.AddFillRow(root, lists, 100);
         FormLayout.AddAutoRow(root, _countLabel);
         FormLayout.AddAutoRow(root, note);
-        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Initiate input set:", _initiateSetCombo));
-        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Cut model input set:", _cutModelSetCombo));
-        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Export NWC options:", _exportNwcSetCombo));
-        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Export IFC + Data options:", _exportIfcSetCombo));
+        // Conditional input-set rows: hidden (not just disabled) until their action is ticked, so an
+        // empty selection does not spend ~140px on four dead rows. See UpdateSelectionUi.
+        _initiateRow = FormLayout.LabeledRow("Initiate input set:", _initiateSetCombo);
+        _cutModelRow = FormLayout.LabeledRow("Cut model input set:", _cutModelSetCombo);
+        _exportNwcRow = FormLayout.LabeledRow("Export NWC options:", _exportNwcSetCombo);
+        _exportIfcRow = FormLayout.LabeledRow("Export IFC + Data options:", _exportIfcSetCombo);
+        FormLayout.AddAutoRow(root, _initiateRow);
+        FormLayout.AddAutoRow(root, _cutModelRow);
+        FormLayout.AddAutoRow(root, _exportNwcRow);
+        FormLayout.AddAutoRow(root, _exportIfcRow);
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Model treatment:", _syncCombo));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("When finished:", _completionCombo));
         FormLayout.AddAutoRow(root, completionNote);
@@ -298,11 +311,15 @@ public sealed class BatchRunWindow : Form
         // Fit to what the dialog actually holds, then refuse to be dragged below it — the idiom
         // CutModelWindow and eight others already use. +_status.Height because the status strip
         // docks outside root.
+        // Hide the conditional rows BEFORE measuring, or the window (and its MinimumSize) is sized for
+        // rows that are about to vanish and opens at full height.
+        UpdateSelectionUi();
         ClientSize = new Size(
             Math.Max(ClientSize.Width, root.PreferredSize.Width),
             root.PreferredSize.Height + _status.Height);
         MinimumSize = Size;
-        FormLayout.KeepFitted(this, root, _status); // grows with content restored later, DPI scaling and label alignment
+        FormLayout.FitPercentColumns(this, lists);   // the 37/31/32 list columns must each hold their widest child
+        _refit = FormLayout.KeepFitted(this, root, _status); // grows with content restored later, DPI scaling and label alignment
 
         UpdateSelectionUi();
         SetStatus("Check the model sets and actions/script sets to include and a destination, then Run now or Save as schedule.");
@@ -338,7 +355,7 @@ public sealed class BatchRunWindow : Form
     {
         // Reachable from control events raised while the constructor is still wiring things up,
         // and the label is built after those controls.
-        if (_countLabel is null) return;
+        if (_countLabel is null || _exportIfcRow is null) return;
 
         _countLabel.Text = SelectionSummary.Describe(
             _modelSetsList.CheckedItems.Cast<ModelSetItem>().Select(i => i.Preset).ToList(),
@@ -347,10 +364,19 @@ public sealed class BatchRunWindow : Form
             SplitAllowed());
 
         var checkedActions = _actionsScriptsList.CheckedItems.Cast<ActionOrScriptItem>().ToList();
-        CheckListBehavior.SetEnabledOrBlank(_initiateSetCombo, checkedActions.Any(a => a.IsInitiate));
-        CheckListBehavior.SetEnabledOrBlank(_cutModelSetCombo, checkedActions.Any(a => a.IsCutModel));
-        CheckListBehavior.SetEnabledOrBlank(_exportNwcSetCombo, checkedActions.Any(a => a.IsExportNwc));
-        CheckListBehavior.SetEnabledOrBlank(_exportIfcSetCombo, checkedActions.Any(a => a.IsExportIfc));
+        // Same condition that used to enable each combo now shows its row; the blank/default
+        // selection logic is unchanged, so saved and loaded picks round-trip as before.
+        ShowRow(_initiateRow, _initiateSetCombo, checkedActions.Any(a => a.IsInitiate));
+        ShowRow(_cutModelRow, _cutModelSetCombo, checkedActions.Any(a => a.IsCutModel));
+        ShowRow(_exportNwcRow, _exportNwcSetCombo, checkedActions.Any(a => a.IsExportNwc));
+        ShowRow(_exportIfcRow, _exportIfcSetCombo, checkedActions.Any(a => a.IsExportIfc));
+        _refit?.Invoke(); // a newly shown row needs height; grow-only, so it never shrinks the window
+    }
+
+    private static void ShowRow(Control row, ComboBox combo, bool on)
+    {
+        CheckListBehavior.SetEnabledOrBlank(combo, on);
+        row.Visible = on;
     }
 
     private void AddAdHocModels()
@@ -536,7 +562,7 @@ public sealed class BatchRunWindow : Form
         public ModelPreset Preset { get; }
         public ModelSetItem(ModelPreset preset) => Preset = preset;
         public override string ToString() =>
-            ModelSetAccess.Label(Preset, $"{Preset.Name}  ({Preset.Models.Count} models)");
+            ModelSetAccess.Label(Preset, $"{Preset.Name}  ({UiText.Plural(Preset.Models.Count, "model")})");
     }
 
     private sealed class ActionOrScriptItem

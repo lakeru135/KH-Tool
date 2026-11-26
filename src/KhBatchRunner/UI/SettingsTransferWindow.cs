@@ -76,8 +76,17 @@ public sealed class SettingsTransferWindow : Form
             Text = "Close", DialogResult = DialogResult.Cancel, AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(80, 0)
         };
-        var buttons = FormLayout.FlowRow(exportButton, importButton, close);
-        buttons.Anchor = AnchorStyles.Right;
+        // Footer: the two actions on the left, Close bottom-right where every other dialog keeps it.
+        var footer = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 2, 0, 2)
+        };
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        footer.Controls.Add(FormLayout.FlowRow(exportButton, importButton), 0, 0);
+        close.Anchor = AnchorStyles.Right;
+        footer.Controls.Add(close, 1, 0);
 
         _report = new TextBox
         {
@@ -91,8 +100,8 @@ public sealed class SettingsTransferWindow : Form
             "What to carry", _categories, FormLayout.FlowRow(selectAll, selectNone)), 60);
         FormLayout.AddAutoRow(root, _includePreferences);
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("If it already exists:", _collisionCombo));
-        FormLayout.AddAutoRow(root, buttons);
         FormLayout.AddFillRow(root, FormLayout.TitledColumn("Result", _report), 40);
+        FormLayout.AddAutoRow(root, footer);
 
         _status = new StatusLine { DetailsTitle = Text };
 
@@ -110,6 +119,7 @@ public sealed class SettingsTransferWindow : Form
         // and sat on top of the Select all/none buttons. Measured floor is ~520; the rest is
         // headroom for a larger system font.
         MinimumSize = new Size(560, 640);
+        FormLayout.KeepFitted(this, root, _status); // grows with DPI scaling instead of overlapping
         SetStatus("Tick what to carry, then Export or Import.");
     }
 

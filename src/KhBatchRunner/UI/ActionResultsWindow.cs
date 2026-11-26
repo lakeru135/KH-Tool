@@ -14,6 +14,10 @@ public sealed class ActionResultsWindow : Form
 {
     private readonly IReadOnlyList<string> _columns;
     private readonly IReadOnlyList<IReadOnlyDictionary<string, string>> _rows;
+    private DataGridView? _grid;      // set when there are rows; Copy reads it so sorted order is kept
+    private Label? _subLabel;
+    private string _subText = "";
+    private System.Windows.Forms.Timer? _copiedTimer;
 
     public ActionResultsWindow(
         string actionName, string modelName,
@@ -53,7 +57,11 @@ public sealed class ActionResultsWindow : Form
         string sub = $"{rows.Count} item{(rows.Count == 1 ? "" : "s")}";
         if (!string.IsNullOrEmpty(perModelNote)) sub += $"  ·  {perModelNote}";
         if (openRow != null && rows.Count > 0) sub += "  ·  Double-click a row to open its view.";
-        var subLabel = new Label { Text = sub, AutoSize = true, Margin = new Padding(3, 0, 3, 2) };
+        // NoteLabel wraps to the available width, so a long per-model note no longer runs off the window.
+        Label subLabel = FormLayout.NoteLabel(this, sub);
+        subLabel.Margin = new Padding(3, 0, 3, 2);
+        _subLabel = subLabel;
+        _subText = sub;
 
         // --- Modified-model warning (write actions only) ---
         Label? warning = modelModified
@@ -115,6 +123,7 @@ public sealed class ActionResultsWindow : Form
                     if (problem != null) MessageBox.Show(this, problem, Text);
                 };
             }
+            _grid = grid;
             middle = grid;
         }
 
@@ -142,13 +151,55 @@ public sealed class ActionResultsWindow : Form
         if (warning != null) warning.ForeColor = Theme.Dim(warning);
     }
 
-    /// <summary>Copies header + rows as tab-separated text (pastes straight into Excel).</summary>
+    /// <summary>Copies header + rows as tab-separated text (pastes straight into Excel). Rows go out in
+    /// the grid's current visible, sorted order, so what you paste matches what you see.</summary>
     private void CopyToClipboard()
     {
         var sb = new StringBuilder();
         sb.AppendLine(string.Join("\t", _columns));
-        foreach (IReadOnlyDictionary<string, string> row in _rows)
-            sb.AppendLine(string.Join("\t", _columns.Select(c => row.TryGetValue(c, out string? v) ? v : "")));
-        try { Clipboard.SetText(sb.ToString()); } catch { /* clipboard busy — ignore */ }
+        int count = 0;
+        if (_grid != null)
+        {
+            // DisplayIndex-independent: cells are in column-add order, which is _columns order.
+            foreach (DataGridViewRow r in _grid.Rows.Cast<DataGridViewRow>().Where(r => r.Visible))
+            {
+                sb.AppendLine(string.Join("\t", _columns.Select((_, i) => r.Cells[i].Value?.ToString() ?? "")));
+                count++;
+            }
+        }
+        else
+        {
+            foreach (IReadOnlyDictionary<string, string> row in _rows)
+            {
+                sb.AppendLine(string.Join("\t", _columns.Select(c => row.TryGetValue(c, out string? v) ? v : "")));
+                count++;
+            }
+        }
+        try { Clipboard.SetText(sb.ToString()); }
+        catch { return; /* clipboard busy — ignore, and don't claim success */ }
+
+        // Brief confirmation in the sub line, then back to the normal text.
+        if (_subLabel is null) return;
+        _subLabel.Text = $"Copied {UiText.Plural(count, "row")}.";
+        // One shared timer: each Copy restarts it, so a double click can't cut the second message short.
+        if (_copiedTimer is null)
+        {
+            _copiedTimer = new System.Windows.Forms.Timer { Interval = 2500 };
+            _copiedTimer.Tick += (_, _) =>
+            {
+                _copiedTimer!.Stop();
+                if (!IsDisposed && _subLabel != null) _subLabel.Text = _subText;
+            };
+        }
+        _copiedTimer.Stop();
+        _copiedTimer.Start();
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        _copiedTimer?.Stop();
+        _copiedTimer?.Dispose();
+        _copiedTimer = null;
+        base.OnFormClosed(e);
     }
 }

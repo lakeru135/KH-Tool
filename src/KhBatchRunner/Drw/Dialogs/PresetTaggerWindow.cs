@@ -75,11 +75,11 @@ internal sealed class PresetTaggerWindow : DrwToolWindow
             FormLayout.LabeledRow("Tag type:", _tagType),
             FormLayout.LabeledRow("Position by:", _mode),
             FormLayout.LabeledRow("Position:", _position),
-            FormLayout.LabeledRow("Distance, mm on paper:", _distance),
+            FormLayout.LabeledRow("Distance, mm on paper:", FormLayout.ShortField(_distance)),
             FormLayout.FlowRow(_enabled, _leader, _horizontal),
             FormLayout.LabeledRow("Only Type Mark containing:", _typeMark),
             FormLayout.LabeledRow("Only family containing:", _family),
-            FormLayout.LabeledRow("Lines shorter than, mm (skip):", _minLength));
+            FormLayout.LabeledRow("Lines shorter than, mm (skip):", FormLayout.ShortField(_minLength)));
 
         _plans = DrwControls.Check("Plans", true);
         _ceilings = DrwControls.Check("Ceiling plans", false);

@@ -180,7 +180,10 @@ internal sealed partial class RunSupervisor
     /// This is also where the run's overall progress window is opened, because "interactive" is
     /// exactly the condition that means somebody is there to read it.
     /// </summary>
-    public static RunSupervisor StartInteractive(RunManifest manifest, Batch.BatchCompletion completion)
+    /// <param name="existing">A watch window the caller already opened (the Confirm window, which
+    /// became the progress window when Start was pressed). Reused instead of opening a second.</param>
+    public static RunSupervisor StartInteractive(RunManifest manifest, Batch.BatchCompletion completion,
+        UI.RunWatchWindow? existing = null)
     {
         // The progress window belongs HERE, not at the call sites. There are four interactive
         // split launches — Batch Run, the Multi Model Check/Action buttons, Batch Interop, and
@@ -189,7 +192,7 @@ internal sealed partial class RunSupervisor
         // interactive split reaches this method, so this is the one place it cannot be missed.
         // ShowFor never throws: failing to display progress must not fail the run.
         bool quitWhenDone = completion == Batch.BatchCompletion.CloseRevit;
-        UI.RunWatchWindow? watch = UI.RunWatchWindow.ShowFor(manifest, quitWhenDone);
+        UI.RunWatchWindow? watch = existing ?? UI.RunWatchWindow.ShowFor(manifest, quitWhenDone);
 
         return Start(manifest, finished =>
         {

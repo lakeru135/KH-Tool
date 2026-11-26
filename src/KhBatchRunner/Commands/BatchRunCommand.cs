@@ -140,21 +140,26 @@ public sealed class BatchRunCommand : IExternalCommand
             bool hasPublish = window.SelectedRunItems.Any(t =>
                 t.Name == InitiateToFormaAction.DisplayName || t.Name == CutModelAction.DisplayName);
             // Only a REAL split asks first; a single supervised export Revit is just where it runs.
+            // Asked in the watch window (Confirm state) rather than a TaskDialog; null launches at once.
+            RunConfirmation? splitConfirm = null;
             if (realSplit)
             {
-                var confirm = new TaskDialog("Batch Run — parallel groups")
-                {
-                    MainInstruction = $"Run {combined.Models.Count} models as {groups} group(s) of up to {groupSize}?",
-                    MainContent =
-                        "Each group opens in its own Revit instance and closes when it finishes. " +
-                        "Concurrency: " + Schedule.InstanceBudget.Describe(combined.Models) + "." +
-                        (hasPublish ? "\n\nNOTE: this run publishes NEW cloud models (Initiate / Cut model)." : "") +
-                        "\n\nContinue?",
-                    CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
-                    DefaultButton = TaskDialogResult.No
-                };
-                if (confirm.Show() != TaskDialogResult.Yes)
-                    return Result.Cancelled;
+                splitConfirm = new RunConfirmation(
+                    $"Run {combined.Models.Count} models as {groups} group(s) of up to {groupSize}?",
+                    "Each group opens in its own Revit instance and closes when it finishes. " +
+                    "Concurrency: " + Schedule.InstanceBudget.Describe(combined.Models) + "." +
+                    (hasPublish ? "\n\nNOTE: this run publishes NEW cloud models (Initiate / Cut model)." : ""),
+                    "Launch groups");
+            }
+            else if (hasPublish)
+            {
+                // A single supervised export child normally asks nothing, but a run that publishes
+                // NEW cloud models must never start unconfirmed.
+                splitConfirm = new RunConfirmation(
+                    $"Run {combined.Models.Count} models in a separate Revit?",
+                    "NOTE: this run publishes NEW cloud models (Initiate / Cut model). It runs in one " +
+                    "separate Revit instance, so a crash in it can't close this one.",
+                    "Start");
             }
 
             var baseJob = new ScheduledJob
@@ -173,20 +178,32 @@ public sealed class BatchRunCommand : IExternalCommand
                 ProjectLogName = window.ProjectLogName
             };
 
-            RunManifest? manifest = ChunkLauncher.LaunchSupervised(
-                baseJob, combined.Models, groupSize, uiApp.Application.VersionNumber, out string? chunkErr);
-            if (manifest == null)
-            {
-                TaskDialog.Show("Batch Run", chunkErr ?? "Could not launch any group instances.");
-                return Result.Failed;
-            }
-            RunSupervisor.StartInteractive(manifest, window.SelectedCompletion);
+            // Captured now: the launch runs from the window's Start click, after this command has
+            // returned, and must not touch the Revit Application object.
+            string revitVersion = uiApp.Application.VersionNumber;
+            IReadOnlyList<CloudModel> models = combined.Models;
             string logRoot = string.IsNullOrWhiteSpace(window.DestinationFolder)
                 ? "(default folder)" : window.DestinationFolder + "\\Log";
-            TaskDialog.Show("Batch Run",
-                ChunkLauncher.DescribeLaunch(manifest, groupSize) +
-                $"\n\nResults are written to one shared log under:\n{logRoot}" +
-                (chunkErr != null ? $"\n\n{chunkErr}" : ""));
+            RunWatchWindow? watch = RunWatchWindow.ShowConfirm(
+                "Batch Run", splitConfirm,
+                () =>
+                {
+                    RunManifest? manifest = ChunkLauncher.LaunchSupervised(
+                        baseJob, models, groupSize, revitVersion, out string? chunkErr);
+                    if (manifest == null)
+                        return (null, chunkErr ?? "Could not launch any group instances.", null);
+                    return (manifest,
+                        null,
+                        ChunkLauncher.DescribeLaunch(manifest, groupSize) +
+                        $"\n\nResults are written to one shared log under:\n{logRoot}" +
+                        (chunkErr != null ? $"\n\n{chunkErr}" : ""));
+                },
+                window.SelectedCompletion);
+            if (watch == null)
+            {
+                TaskDialog.Show("Batch Run", "Could not open the run window.");
+                return Result.Failed;
+            }
             return Result.Succeeded;
         }
 
@@ -293,24 +310,22 @@ public sealed class BatchRunCommand : IExternalCommand
         // Initiate / Cut model create NEW cloud models — confirm the destination(s) before an
         // interactive run (this is where the standalone commands' confirm gate lives for the batch
         // path; a headless scheduled run never prompts — it was confirmed when the schedule was saved).
+        // Asked in the run window (Confirm state), not a TaskDialog.
+        RunConfirmation? publishConfirm = null;
         if (publishTargets.Count > 0)
         {
-            var confirm = new TaskDialog("Batch Run — publish to Forma")
-            {
-                MainInstruction = $"Publish {combined.Models.Count} model(s) to Forma?",
-                MainContent =
-                    string.Join("\n", publishTargets) + "\n\n" +
-                    "Each model in the run is published as a NEW cloud model. Continue?",
-                CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
-                DefaultButton = TaskDialogResult.No
-            };
-            if (confirm.Show() != TaskDialogResult.Yes)
-                return Result.Cancelled;
+            publishConfirm = new RunConfirmation(
+                $"Publish {combined.Models.Count} model(s) to Forma?",
+                string.Join("\n", publishTargets) + "\n\n" +
+                "Each model in the run is published as a NEW cloud model.",
+                "Publish");
         }
 
         try
         {
-            BatchRunnerWindow.RunModal(uiApp, passes, "Batch Run", window.SelectedCompletion);
+            BatchRunnerWindow.RunModal(uiApp, passes, "Batch Run", window.SelectedCompletion,
+                confirm: publishConfirm);
+            if (BatchRunnerWindow.LastRunCancelled) return Result.Cancelled;
         }
         catch (Exception ex)
         {

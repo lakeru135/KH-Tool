@@ -61,7 +61,7 @@ internal static class BatchCommandFlow
         }
         catch (Exception ex)
         {
-            TaskDialog.Show("KH Batch Script Runner", $"Invalid publish target: {ex.Message}");
+            TaskDialog.Show(Product.Name, $"Invalid publish target: {ex.Message}");
             return null;
         }
     }
@@ -72,16 +72,19 @@ internal static class BatchCommandFlow
     /// models, and opening a cloud model from an Idling event hangs/crashes Revit's cloud-open UI
     /// (see <see cref="BatchRunnerWindow"/>). A failure to start is shown as
     /// "Could not start <paramref name="failSubject"/>: …" under <paramref name="failTitle"/>.
+    /// <paramref name="confirm"/>, when given, is asked INSIDE the run window (Confirm state) —
+    /// Cancel there runs nothing — instead of in a TaskDialog before it.
     /// </summary>
     public static Result RunModal(UIApplication uiApp, IBatchAction action, ModelPreset chosen,
         string destinationFolder, string projectLogName, BatchCompletion completion,
-        string failTitle, string failSubject)
+        string failTitle, string failSubject, RunConfirmation? confirm = null)
     {
         var engine = new BatchEngine(uiApp, action, destinationFolder, projectLogName);
 
         try
         {
-            BatchRunnerWindow.RunModal(uiApp, engine, chosen, action.Name, completion);
+            BatchRunnerWindow.RunModal(uiApp, engine, chosen, action.Name, completion, confirm);
+            if (BatchRunnerWindow.LastRunCancelled) return Result.Cancelled;
         }
         catch (Exception ex)
         {

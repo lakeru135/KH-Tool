@@ -600,6 +600,7 @@ public static class RunNotification
         string safeTitle = SecurityElement.Escape(title ?? "") ?? "";
         string safeMessage = SecurityElement.Escape(message ?? "") ?? "";
         string uri = LogUri(logPath);
+        string resultUri = ResultUri(logPath);
 
         string launch = uri.Length == 0
             ? ""
@@ -608,12 +609,17 @@ public static class RunNotification
             ? ""
             : $"<action activationType=\"protocol\" arguments=\"{SecurityElement.Escape(uri)}\" " +
               "content=\"Open log\"/>";
+        // Before "Open log": the destination folder is the usual next stop, the CSV the detail view.
+        string resultAction = resultUri.Length == 0
+            ? ""
+            : $"<action activationType=\"protocol\" arguments=\"{SecurityElement.Escape(resultUri)}\" " +
+              "content=\"Open result\"/>";
 
         return $"<toast scenario=\"{RetainedScenario}\" duration=\"long\"{launch}>" +
                "<visual><binding template=\"ToastGeneric\">" +
                $"<text>{safeTitle}</text><text>{safeMessage}</text>" +
                "</binding></visual>" +
-               "<actions>" + openAction +
+               "<actions>" + resultAction + openAction +
                "<action activationType=\"system\" arguments=\"dismiss\" " +
                "content=\"Dismiss\"/></actions></toast>";
     }
@@ -644,6 +650,28 @@ public static class RunNotification
             if (!File.Exists(full)) return "";
             if (!LogSchemeRegistered()) return "";
             return LogUriScheme + ":" + Uri.EscapeDataString(full);
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    /// <summary>
+    /// The same kind of link for the run's destination folder (the parent of the tracking log's
+    /// <c>Log</c> directory), or "" when it cannot be derived, does not exist, or the scheme is not
+    /// registered. It rides the log scheme: the launcher tells a folder from a file by what the
+    /// path is, and only opens a folder that has a <c>Log</c> subfolder (see KhBatchLauncher).
+    /// </summary>
+    internal static string ResultUri(string logPath)
+    {
+        string? folder = RunResultPaths.ResultFolderFor(logPath);
+        if (folder == null) return "";
+        try
+        {
+            if (!Directory.Exists(folder)) return "";
+            if (!LogSchemeRegistered()) return "";
+            return LogUriScheme + ":" + Uri.EscapeDataString(folder);
         }
         catch
         {
@@ -762,7 +790,10 @@ public static class RunNotification
     /// <summary>The end of a run. A clean finish is news for an hour; a finish WITH ERRORS is the
     /// one message that must survive until someone acknowledges it, so it says so in the title
     /// rather than hiding the difference in the body text.</summary>
-    public static void ShowRunFinished(string runName, int succeeded, int failed, string logPath = "")
+    /// <param name="wait">True (the default) waits for Windows to take the message — required when
+    /// this process may exit right after. False queues it, for a caller whose window stays open.</param>
+    public static void ShowRunFinished(string runName, int succeeded, int failed, string logPath = "",
+        bool wait = true)
     {
         string title = FinishedTitle(runName, failed);
         string body = failed == 0
@@ -774,7 +805,8 @@ public static class RunNotification
         // on the reasoning that it needs no follow-up — but "it finished, what did it actually do?"
         // is the ordinary next question, and the answer is the file this message is already about.
         // Nothing opens by itself: a click is still a click, on a message the user went looking for.
-        ShowAndWait(title, body, failed > 0, logPath);
+        if (wait) ShowAndWait(title, body, failed > 0, logPath);
+        else Show(title, body, failed > 0, logPath);
     }
 
     public static void ShowRunFinishedAndWait(

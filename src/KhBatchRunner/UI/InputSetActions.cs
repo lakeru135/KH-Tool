@@ -100,13 +100,18 @@ internal sealed class InputSetActions<T> where T : class
                         !name.Equals(loadedSetName, StringComparison.OrdinalIgnoreCase);
         if (_exists(name) && (loadedSetName == null || renaming))
         {
-            if (MessageBox.Show(_owner, $"{Article(_noun)} {_noun} named '{name}' already exists. Overwrite it?",
+            string question = renaming
+                ? $"Renaming {_noun} '{loadedSetName}' to '{name}' will replace the existing {_noun} '{name}'. Continue?"
+                : $"{Article(_noun)} {_noun} named '{name}' already exists. Overwrite it?";
+            if (MessageBox.Show(_owner, question,
                     _owner.Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                 return;
         }
 
         _save(snapshot(name));
-        if (renaming) _delete(loadedSetName!);
+        // Sets are files, and the store maps invalid file-name characters to "_": "a:b" and "a_b" are the
+        // SAME file, so deleting the old name would delete the set just saved.
+        if (renaming && !SameFile(loadedSetName!, name)) _delete(loadedSetName!);
         loadedSetName = name;
         Reload(selectName: name);
     }
@@ -159,6 +164,22 @@ internal sealed class InputSetActions<T> where T : class
         _combo.Text = "";
     }
 
+    private static bool SameFile(string a, string b) => SetFileName.Same(a, b);
+
     private static string Article(string noun) =>
         noun.Length > 0 && "aeiou".IndexOf(char.ToLowerInvariant(noun[0])) >= 0 ? "An" : "A";
+}
+
+/// <summary>
+/// Sets are stored one file per name, so two names that differ only by case or by characters invalid
+/// in a file name ("A/B" vs "A_B") are the SAME file. Shared so every rename-on-save path agrees on
+/// when "delete the old name" would really delete the set that was just saved.
+/// </summary>
+internal static class SetFileName
+{
+    public static string Key(string name) =>
+        string.Join("_", name.Split(System.IO.Path.GetInvalidFileNameChars()));
+
+    public static bool Same(string a, string b) =>
+        string.Equals(Key(a), Key(b), StringComparison.OrdinalIgnoreCase);
 }

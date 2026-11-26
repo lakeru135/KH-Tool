@@ -17,7 +17,8 @@ public sealed class ExcelExportWindow : Form
 {
     private readonly Document _doc;
     private readonly List<(ViewSchedule Schedule, string? Unsupported)> _schedules;
-    private readonly CheckedListBox _list;
+    private readonly DimmableCheckedListBox _list;
+    private Label? _countLabel;
     private readonly TextBox _filterBox;
     private readonly TextBox _pathBox;
     private readonly Button _okButton;
@@ -45,7 +46,7 @@ public sealed class ExcelExportWindow : Form
 
         _schedules = ScheduleWorkbookExporter.ListSchedules(doc);
         _checkedState = new bool[_schedules.Count];
-        _list = new CheckedListBox
+        _list = new DimmableCheckedListBox
         {
             CheckOnClick = true,
             IntegralHeight = false,
@@ -58,8 +59,11 @@ public sealed class ExcelExportWindow : Form
         {
             int master = _visible[e.Index];
             if (_schedules[master].Unsupported != null) { e.NewValue = CheckState.Unchecked; return; }
-            if (!_rebuilding) _checkedState[master] = e.NewValue == CheckState.Checked;
+            if (!_rebuilding) { _checkedState[master] = e.NewValue == CheckState.Checked; UpdateCount(); }
         };
+
+        // Unsupported rows draw dimmed (the XML doc promises greyed). _visible maps row -> master index.
+        _list.DimWhere(i => i >= 0 && i < _visible.Count && _schedules[_visible[i]].Unsupported != null);
 
         _filterBox = new TextBox();
         _filterBox.TextChanged += (_, _) => RebuildVisible();
@@ -95,7 +99,9 @@ public sealed class ExcelExportWindow : Form
         FormLayout.AddAutoRow(root, note);
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Filter:", _filterBox));
         FormLayout.AddFillRow(root, FormLayout.LabeledRow("Schedules:", _list), 100);
-        var selectRow = FormLayout.FlowRow(selectAll, selectNone);
+        _countLabel = new Label { AutoSize = true, Margin = new Padding(12, 7, 3, 0) };
+        UpdateCount();
+        var selectRow = FormLayout.FlowRow(selectAll, selectNone, _countLabel);
         selectRow.Anchor = AnchorStyles.Left;
         FormLayout.AddAutoRow(root, selectRow);
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Workbook file:", _pathBox, browse));
@@ -142,6 +148,14 @@ public sealed class ExcelExportWindow : Form
         {
             _rebuilding = false;
         }
+    }
+
+    private void UpdateCount()
+    {
+        if (_countLabel is null) return;
+        int n = 0;
+        foreach (bool b in _checkedState) if (b) n++;
+        _countLabel.Text = $"{n} selected";
     }
 
     // Select all / none acts on the VISIBLE rows only (handy under an active filter); both the list

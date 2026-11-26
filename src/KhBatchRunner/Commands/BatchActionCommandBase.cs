@@ -40,7 +40,7 @@ public abstract class BatchActionCommandBase : IExternalCommand
         List<ModelPreset> presets = PresetStore.LoadAll();
         if (presets.Count == 0 && activeName == null)
         {
-            TaskDialog.Show("KH Batch Script Runner",
+            TaskDialog.Show(Product.Name,
                 "No model sets found, and no model is open.\n\n" +
                 "Create a model set with Setting → Edit Model Set, or open a model to run this " +
                 "action on it directly.");
@@ -74,17 +74,11 @@ public abstract class BatchActionCommandBase : IExternalCommand
         if (groupSize > 0 && canChunk && chosen.Models.Count > groupSize)
         {
             int groups = ChunkLauncher.GroupCount(chosen.Models.Count, groupSize);
-            var confirm = new TaskDialog("Run — parallel groups")
-            {
-                MainInstruction = $"Run {action.Name} on {chosen.Models.Count} models as {groups} group(s) of up to {groupSize}?",
-                MainContent =
-                    "Each group opens in its own Revit instance and closes when it finishes. " +
-                    "Concurrency: " + Schedule.InstanceBudget.Describe(chosen.Models) + ".\n\nContinue?",
-                CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
-                DefaultButton = TaskDialogResult.No
-            };
-            if (confirm.Show() != TaskDialogResult.Yes)
-                return Result.Cancelled;
+            var confirm = new RunConfirmation(
+                $"Run {action.Name} on {chosen.Models.Count} models as {groups} group(s) of up to {groupSize}?",
+                "Each group opens in its own Revit instance and closes when it finishes. " +
+                "Concurrency: " + Schedule.InstanceBudget.Describe(chosen.Models) + ".",
+                "Launch groups");
 
             var baseJob = new ScheduledJob
             {
@@ -95,19 +89,30 @@ public abstract class BatchActionCommandBase : IExternalCommand
                 DestinationFolder = destFolder,
                 ProjectLogName = projectLog
             };
-            RunManifest? manifest = ChunkLauncher.LaunchSupervised(
-                baseJob, chosen.Models, groupSize, uiApp.Application.VersionNumber, out string? chunkErr);
-            if (manifest == null)
+            // Captured now: the launch runs from the window's Start click, after this command has
+            // returned, and must not touch the Revit Application object.
+            string revitVersion = uiApp.Application.VersionNumber;
+            IReadOnlyList<CloudModel> models = chosen.Models;
+            RunWatchWindow? window = RunWatchWindow.ShowConfirm(
+                action.Name, confirm,
+                () =>
+                {
+                    RunManifest? manifest = ChunkLauncher.LaunchSupervised(
+                        baseJob, models, groupSize, revitVersion, out string? chunkErr);
+                    if (manifest == null)
+                        return (null, chunkErr ?? "Could not launch any group instances.", null);
+                    return (manifest,
+                        null,
+                        ChunkLauncher.DescribeLaunch(manifest, groupSize) +
+                        $"\n\nResults are written to one shared log under:\n{destFolder}\\Log" +
+                        (chunkErr != null ? $"\n\n{chunkErr}" : ""));
+                },
+                dialog.SelectedCompletion);
+            if (window == null)
             {
-                TaskDialog.Show("KH Batch Script Runner", chunkErr ?? "Could not launch any group instances.");
+                TaskDialog.Show(Product.Name, "Could not open the run window.");
                 return Result.Failed;
             }
-            // Supervise: a group whose Revit dies would otherwise take its models with it, silently.
-            RunSupervisor.StartInteractive(manifest, dialog.SelectedCompletion);
-            TaskDialog.Show("KH Batch Script Runner",
-                Schedule.ChunkLauncher.DescribeLaunch(manifest, groupSize) +
-                $"\n\nResults are written to one shared log under:\n{destFolder}\\Log" +
-                (chunkErr != null ? $"\n\n{chunkErr}" : ""));
             return Result.Succeeded;
         }
 
@@ -120,14 +125,15 @@ public abstract class BatchActionCommandBase : IExternalCommand
             // made Revit's own CloudWorksharing.UI fail ("Can not subscribe to an event during
             // execution of that event") and then hang on the "Open Model" dialog or crash
             // (0xc0000005); from a modal message loop the open behaves like a normal user open.
-            // RunModal shows the completion summary itself (Close files / Leave files open).
+            // RunModal shows the completion summary itself (Close files / Leave files open), in the
+            // window's Done state. No confirmation here: the user just pressed Run in a dialog.
             BatchRunnerWindow.RunModal(uiApp, engine, chosen, $"Run: {action.Name}", dialog.SelectedCompletion);
         }
         catch (Exception ex)
         {
             // e.g. the destination folder (a free-text box) is an unreachable share, or a model
             // open threw before the per-model catch — surface it instead of failing silently.
-            TaskDialog.Show("KH Batch Script Runner", $"Could not run batch: {ex.Message}");
+            TaskDialog.Show(Product.Name, $"Could not run batch: {ex.Message}");
             return Result.Failed;
         }
 

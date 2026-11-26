@@ -34,7 +34,7 @@ public sealed class CorrectWorksetCommand : IExternalCommand
         var client = new DataManagementClient(new SessionTokenProvider());
 
         CorrectWorksetWindow? dialog = BatchCommandFlow.TryCreateDialog(
-            () => new CorrectWorksetWindow(presets, client), "KH Batch Script Runner", "Correct Workset");
+            () => new CorrectWorksetWindow(presets, client), Product.Name, "Correct Workset");
         if (dialog == null) return Result.Failed;
         using var _dlg = dialog;
         if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
@@ -64,28 +64,23 @@ public sealed class CorrectWorksetCommand : IExternalCommand
         ModelPreset chosen = PresetResolver.Resolve(dialog.SelectedPreset!, out string? setNote);
 
         // Fix mode changes models — make the plan explicit before the batch starts.
+        // Asked in the run window (Confirm state), not a TaskDialog; a non-Fix run asks nothing.
+        RunConfirmation? confirm = null;
         if (inputs.Fix)
         {
             string rulesText = inputs.Rules.Count == 0
                 ? "(no category rules)"
                 : string.Join("\n", inputs.Rules.Select(r => "•  " + r.Label +
                     (string.IsNullOrWhiteSpace(r.Keyword) ? "" : $"  (rename keyword '{r.Keyword}')")));
-            var confirm = new TaskDialog("Correct Workset — Model Batch Action")
-            {
-                MainInstruction = $"Correct worksets in {chosen.Models.Count} model(s)?",
-                MainContent =
-                    $"Host model set: {chosen.Name} ({chosen.Models.Count} model(s))\n" +
-                    rulesText + "\n" +
-                    (inputs.ApplyLinkRule
-                        ? $"•  RVT links → each alone in '{inputs.LinkKeyword}_<model name>'\n" : "") +
-                    (setNote != null ? setNote + "\n" : "") +
-                    "\nWorkset RENAMES pause for your approval at each model; creates and moves " +
-                    "run automatically. Each model is synced back to its central. Continue?",
-                CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
-                DefaultButton = TaskDialogResult.No
-            };
-            if (confirm.Show() != TaskDialogResult.Yes)
-                return Result.Cancelled;
+            confirm = new RunConfirmation(
+                $"Correct worksets in {chosen.Models.Count} model(s)?",
+                $"Host model set: {chosen.Name} ({chosen.Models.Count} model(s))\n" +
+                rulesText + "\n" +
+                (inputs.ApplyLinkRule
+                    ? $"•  RVT links → each alone in '{inputs.LinkKeyword}_<model name>'\n" : "") +
+                (setNote != null ? setNote + "\n" : "") +
+                "\nWorkset RENAMES pause for your approval at each model; creates and moves " +
+                "run automatically. Each model is synced back to its central.");
         }
 
         // Parallel auto-split, same shape as Batch Run / Multi Model Check. Safe for Correct
@@ -106,11 +101,13 @@ public sealed class CorrectWorksetCommand : IExternalCommand
                 DestinationFolder = inputs.DestinationFolder,
                 ProjectLogName = inputs.ProjectLogName
             },
-            chosen.Models, dialog.SplitEnabled, action.Name, dialog.SelectedCompletion);
+            chosen.Models, dialog.SplitEnabled, action.Name, dialog.SelectedCompletion,
+            actionConfirm: confirm);
         if (split.HasValue) return split.Value;
 
         // Modal message-loop runner, never Idling — hosts are typically Forma cloud models.
         return BatchCommandFlow.RunModal(uiApp, action, chosen, inputs.DestinationFolder,
-            inputs.ProjectLogName, dialog.SelectedCompletion, "KH Batch Script Runner", "Correct Workset");
+            inputs.ProjectLogName, dialog.SelectedCompletion, Product.Name, "Correct Workset",
+            confirm);
     }
 }

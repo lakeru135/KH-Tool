@@ -26,8 +26,10 @@ public sealed class FormaExtractWindow : Form
 
     private readonly ListBox _folderList;
     private readonly Button _addButton;
-    private readonly TextBox _setNameBox;
     private readonly ComboBox _setCombo;
+    private readonly InputSetActions<FileLogInputSet> _sets;
+    /// <summary>True while <see cref="ApplySet"/> writes the set's name into the combo, so that does not re-load the set.</summary>
+    private bool _syncingCombo;
     private readonly CheckBox _recurse;
     private readonly RadioButton _allFiles;
     private readonly RadioButton _revitOnly;
@@ -97,16 +99,24 @@ public sealed class FormaExtractWindow : Form
             UpdateRunEnabled();
         };
 
-        _setNameBox = new TextBox();
-        var saveSet = new Button { Text = "Save", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(70, 0) };
+        // One editable combo + Save / Duplicate / Delete — the shared InputSetActions pattern (as
+        // CutModelWindow). Picking a set in the combo loads it (this window's old Load button).
+        _setCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown };
+        _setCombo.SelectedIndexChanged += (_, _) =>
+        {
+            if (_syncingCombo || _setCombo.SelectedItem is not FileLogInputSet set) return;
+            ApplySet(set.Clone());
+            SetStatus($"Loaded set '{set.Name}' — {set.FoldersLabel}, {set.ScopeLabel}.");
+        };
+        _sets = new InputSetActions<FileLogInputSet>(this, _setCombo,
+            FileLogSetStore.LoadAll, FileLogSetStore.Exists, FileLogSetStore.Save, FileLogSetStore.Delete,
+            x => x.Name, x => x.Clone(), (x, name) => x.Name = name,
+            x => x, o => o as FileLogInputSet, Warn, noun: "set", boxLabel: "Saved set");
+        var saveSet = new Button { Text = "Save set", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(80, 0) };
         saveSet.Click += (_, _) => SaveSet();
-
-        _setCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
-        var loadSet = new Button { Text = "Load", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(60, 0) };
-        loadSet.Click += (_, _) => LoadSelectedSet();
         var dupSet = new Button { Text = "Duplicate", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(80, 0) };
         dupSet.Click += (_, _) => DuplicateSet();
-        var deleteSet = new Button { Text = "Delete", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(60, 0) };
+        var deleteSet = new Button { Text = "Delete", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(70, 0) };
         deleteSet.Click += (_, _) => DeleteSet();
 
         // Which files. All types is the default — the log's columns are generic version metadata
@@ -139,8 +149,7 @@ public sealed class FormaExtractWindow : Form
         FormLayout.AddAutoRow(right, new Label { Text = "Folders in set:", AutoSize = true, Margin = new Padding(3, 4, 3, 2) });
         FormLayout.AddFillRow(right, _folderList, 100);
         FormLayout.AddAutoRow(right, FormLayout.FlowRow(_addButton, addManyButton, removeButton));
-        FormLayout.AddAutoRow(right, FormLayout.LabeledRow("Set name:", _setNameBox, saveSet));
-        FormLayout.AddAutoRow(right, FormLayout.LabeledRow("Saved sets:", _setCombo, loadSet, dupSet, deleteSet));
+        FormLayout.AddAutoRow(right, FormLayout.LabeledRow("Saved set:", _setCombo, saveSet, dupSet, deleteSet));
         FormLayout.AddAutoRow(right, new Label { Text = "Include:", AutoSize = true, Margin = new Padding(3, 6, 3, 0) });
         FormLayout.AddAutoRow(right, _allFiles);
         FormLayout.AddAutoRow(right, _revitOnly);
@@ -169,9 +178,9 @@ public sealed class FormaExtractWindow : Form
         note.ForeColor = Theme.Dim(note);
         Load += (_, _) =>
         {
-            try { split.SplitterDistance = 380; } catch { /* clamped by min sizes */ }
-            ReloadSets(null);
-            ApplySet(FileLogSetStore.TryLoadLastUsed());
+            FormLayout.FitSplit(this, split, right, _status);
+            _sets.Reload(selectName: null);
+            ApplySet(FileLogSetStore.TryLoadLastUsed(), restored: true);
             controller.LoadHubs();
         };
     }
@@ -231,7 +240,15 @@ public sealed class FormaExtractWindow : Form
     };
 
     /// <summary>The reverse of <see cref="Current"/> — a set back into the controls.</summary>
-    private void ApplySet(FileLogInputSet? set)
+    /// <summary>The name to treat as "the loaded set" after restoring the LAST-USED snapshot: only when a
+    /// saved set of that name exists with identical content. Last-used records whatever name was typed,
+    /// loaded or not, so trusting it would let a later Save overwrite an unrelated set without the prompt.</summary>
+    private static string? LoadedNameFor(FileLogInputSet snapshot, FileLogInputSet? saved) =>
+        saved != null && !string.IsNullOrWhiteSpace(snapshot.Name) &&
+        System.Text.Json.JsonSerializer.Serialize(snapshot) == System.Text.Json.JsonSerializer.Serialize(saved)
+            ? snapshot.Name : null;
+
+    private void ApplySet(FileLogInputSet? set, bool restored = false)
     {
         if (set is null) return;
         _folderList.Items.Clear();
@@ -241,92 +258,39 @@ public sealed class FormaExtractWindow : Form
         _allFiles.Checked = !_revitOnly.Checked;
         _latestOnly.Checked = set.Spec.LatestVersionOnly;
         if (!string.IsNullOrWhiteSpace(set.DestinationFolder)) _folderBox.Text = set.DestinationFolder;
-        _setNameBox.Text = set.Name;
-        _loadedSetName = string.IsNullOrWhiteSpace(set.Name) ? null : set.Name;
+        // The combo's own text IS the set name now. Guarded: naming it selects the matching saved
+        // set, which must not re-load that set over what was just applied (e.g. a last-used snapshot).
+        _syncingCombo = true;
+        try { _setCombo.Text = set.Name; }
+        finally { _syncingCombo = false; }
+        _loadedSetName = restored
+            ? LoadedNameFor(set, FileLogSetStore.LoadAll().FirstOrDefault(x =>
+                string.Equals(x.Name, set.Name, StringComparison.OrdinalIgnoreCase)))
+            : string.IsNullOrWhiteSpace(set.Name) ? null : set.Name;
         UpdateRunEnabled();
-    }
-
-    private void ReloadSets(string? select)
-    {
-        _setCombo.Items.Clear();
-        foreach (FileLogInputSet set in FileLogSetStore.LoadAll()) _setCombo.Items.Add(set);
-        if (select == null) return;
-        for (int i = 0; i < _setCombo.Items.Count; i++)
-            if (_setCombo.Items[i] is FileLogInputSet s &&
-                s.Name.Equals(select, StringComparison.OrdinalIgnoreCase))
-            { _setCombo.SelectedIndex = i; return; }
-    }
-
-    private void LoadSelectedSet()
-    {
-        if (_setCombo.SelectedItem is not FileLogInputSet set) { Warn("Choose a saved set first."); return; }
-        ApplySet(set.Clone());
-        SetStatus($"Loaded set '{set.Name}' — {set.FoldersLabel}, {set.ScopeLabel}.");
     }
 
     private void SaveSet()
     {
-        string name = _setNameBox.Text.Trim();
-        if (string.IsNullOrEmpty(name)) { Warn("Enter a set name to save."); return; }
-        if (_folderList.Items.Count == 0) { Warn("Add at least one Forma folder before saving."); return; }
-
-        // Renaming a loaded set moves it rather than leaving the old name behind as a stale twin.
-        bool renaming = _loadedSetName != null &&
-                        !name.Equals(_loadedSetName, StringComparison.OrdinalIgnoreCase);
-        if (FileLogSetStore.Exists(name) && (_loadedSetName == null || renaming))
-        {
-            if (MessageBox.Show(this, $"A set named '{name}' already exists. Replace it?", Text,
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
-                return;
-        }
-
         try
         {
-            FileLogSetStore.Save(Current(name));
-            if (renaming) FileLogSetStore.Delete(_loadedSetName!);
-            _loadedSetName = name;
-            ReloadSets(name);
-            SetStatus($"Saved set '{name}'.");
+            _sets.Save(ref _loadedSetName, Current,
+                () => _folderList.Items.Count == 0 ? "Add at least one Forma folder before saving." : null);
         }
-        catch (Exception ex) { Warn("Could not save the set: " + ex.Message.Split('\n')[0]); }
+        catch (Exception ex) { Warn("Could not save the set: " + ex.Message.Split('\n')[0]); return; }
+        // Only claim a save when one happened (a declined overwrite leaves the typed name unsaved).
+        if (_loadedSetName != null && _setCombo.Text.Trim().Equals(_loadedSetName, StringComparison.OrdinalIgnoreCase))
+            SetStatus($"Saved set '{_loadedSetName}'.");
     }
 
-    /// <summary>
-    /// Forks the selected set to a new "&lt;name&gt; (copy)" and loads the copy.
-    ///
-    /// <para><see cref="ApplySet"/> re-points <c>_loadedSetName</c> at the COPY, which is the line
-    /// that matters: leave it on the original and the next Save takes the rename branch at
-    /// <see cref="SaveSet"/> and deletes the set just copied from.</para>
-    /// </summary>
-    private void DuplicateSet()
-    {
-        if (_setCombo.SelectedItem is not FileLogInputSet set) { Warn("Choose a saved set first."); return; }
-        FileLogInputSet copy = set.Clone();
-        copy.Name = SetDuplication.UniqueName(set.Name, FileLogSetStore.LoadAll().Select(s => s.Name));
-        try
-        {
-            FileLogSetStore.Save(copy);
-        }
-        catch (Exception ex) { Warn("Could not duplicate the set: " + ex.Message.Split('\n')[0]); return; }
-        ReloadSets(copy.Name);
-        ApplySet(copy);
-        SetStatus($"Duplicated '{set.Name}' as '{copy.Name}'.");
-    }
+    /// <summary>Forks the selected set to a new "&lt;name&gt; (copy)" and loads the copy — see
+    /// <see cref="InputSetActions{T}.Duplicate"/>, which leans on the combo's selection change to
+    /// re-point <c>_loadedSetName</c> at the COPY (else the next Save would delete the original).</summary>
+    private void DuplicateSet() => _sets.Duplicate();
 
     private void DeleteSet()
     {
-        if (_setCombo.SelectedItem is not FileLogInputSet set) { Warn("Choose a saved set first."); return; }
-        if (MessageBox.Show(this, $"Delete the saved set '{set.Name}'?", Text,
-                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
-            return;
-        try
-        {
-            FileLogSetStore.Delete(set.Name);
-            if (string.Equals(_loadedSetName, set.Name, StringComparison.OrdinalIgnoreCase))
-                _loadedSetName = null;
-            ReloadSets(null);
-            SetStatus($"Deleted set '{set.Name}'.");
-        }
+        try { _sets.Delete(ref _loadedSetName); }
         catch (Exception ex) { Warn("Could not delete the set: " + ex.Message.Split('\n')[0]); }
     }
 
@@ -349,7 +313,7 @@ public sealed class FormaExtractWindow : Form
         if (_folderList.Items.Count == 0) { Warn("Add at least one Forma folder."); return; }
         if (string.IsNullOrWhiteSpace(_folderBox.Text)) { Warn("Choose a destination folder."); return; }
 
-        FileLogInputSet set = Current(_setNameBox.Text.Trim());
+        FileLogInputSet set = Current(_setCombo.Text.Trim());
         string dest = set.DestinationFolder;
         // Remembered even when the set was never named, so reopening the dialog resumes where it
         // left off — the same courtesy Export NWC and Internal Relink already extend.

@@ -57,7 +57,7 @@ public sealed class ExportNwcWindow : Form
     private readonly TextBox _destBox;
     private readonly TextBox _projectLogBox;
     private readonly CheckBox? _activeModelCheck;
-    private readonly Label _status;
+    private readonly StatusLine _status;
 
     /// <summary>The options to run with, set only when the user chose Run. Null on Close.</summary>
     public ExportNwcInputSet? RunSpec { get; private set; }
@@ -228,7 +228,7 @@ public sealed class ExportNwcWindow : Form
             _activeModelCheck = activeCheck;
         }
 
-        _status = new Label { AutoSize = true, Margin = new Padding(3, 6, 3, 3) };
+        _status = new StatusLine { DetailsTitle = Text };
 
         FormLayout.AddAutoRow(root, note);
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Saved options set:", _setsCombo, saveBtn, dupBtn, deleteBtn));
@@ -236,7 +236,7 @@ public sealed class ExportNwcWindow : Form
         FormLayout.AddAutoRow(root, grid);
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Coordinates:", _coordinates.Combo));
         FormLayout.AddAutoRow(root, _coordinates.Note);
-        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Faceting factor:", _facetingBox));
+        FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Faceting factor:", FormLayout.ShortField(_facetingBox)));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Parameters:", _parametersCombo));
         FormLayout.AddAutoRow(root, scopeRow);
         FormLayout.AddAutoRow(root, new Label { Text = "File naming:", AutoSize = true });
@@ -247,10 +247,12 @@ public sealed class ExportNwcWindow : Form
             FormLayout.AddAutoRow(root, _activeModelCheck);
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Export CSV log to:", _destBox, destBrowse));
         FormLayout.AddAutoRow(root, FormLayout.LabeledRow("Project log name:", _projectLogBox));
-        FormLayout.AddAutoRow(root, _status);
-        FormLayout.AddAutoRow(root, FormLayout.FlowRow(runBtn, cancelBtn));
+        var buttons = FormLayout.FlowRow(runBtn, cancelBtn);
+        buttons.Anchor = AnchorStyles.Right;   // right-aligned footer, like Cut Model / Initiate
+        FormLayout.AddAutoRow(root, buttons);
 
         Controls.Add(root);
+        Controls.Add(_status);
         CancelButton = cancelBtn;
         Theme.Apply(this);
         FormLayout.AlignLabels(this);
@@ -265,7 +267,7 @@ public sealed class ExportNwcWindow : Form
         // overflowed on top of each other. That is why "Model set to run over:" appeared sliced in
         // half underneath the "Export CSV log to:" row.
         ClientSize = new Size(
-            Math.Max(ClientSize.Width, root.PreferredSize.Width), root.PreferredSize.Height);
+            Math.Max(ClientSize.Width, root.PreferredSize.Width), root.PreferredSize.Height + _status.Height);
         MinimumSize = Size;
 
         // Populate the saved sets and restore the last committed inputs (which also selects the
@@ -286,7 +288,7 @@ public sealed class ExportNwcWindow : Form
         // AFTER the restore: a restored "Project Base Point at 0,0,0" grows the Coordinates note by
         // three lines, and so do DPI scaling and AlignLabels later on. 2.1.0.8 measured only above,
         // and in Revit the model-set list was drawn over the rows below it. See FormLayout.KeepFitted.
-        Action refit = FormLayout.KeepFitted(this, root);
+        Action refit = FormLayout.KeepFitted(this, root, _status);
         _coordinates.NoteChanged += refit;
     }
 
@@ -418,7 +420,7 @@ public sealed class ExportNwcWindow : Form
         if (dlg.ShowDialog(this) == DialogResult.OK) target.Text = dlg.SelectedPath;
     }
 
-    private void SetStatus(string text) => _status.Text = text;
+    private void SetStatus(string text) => _status.SetMessage(text);
 
     /// <summary>A dropdown entry whose stored value differs from its label — same shape as the one
     /// every other window here keeps privately.</summary>

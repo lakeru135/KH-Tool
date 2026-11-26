@@ -27,8 +27,11 @@ namespace KhBatchRunner.UI;
 /// </summary>
 public sealed class RunWatchWindow : Form
 {
-    private readonly RunManifest _manifest;
-    private readonly int _expected;
+    // Set by Attach. A window opened with ShowConfirm has no run yet: it asks first, and only
+    // launches (and so only gets a manifest) when Start is pressed.
+    private RunManifest _manifest = null!;
+    private bool _attached;
+    private int _expected = 1;
     private readonly HashSet<string> _seen = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Round numbers already written to the log, so each is announced once.</summary>
@@ -36,9 +39,14 @@ public sealed class RunWatchWindow : Form
     private readonly ProgressBar _bar;
     private readonly StatusLine _status;
     private readonly TextBox _log;
+    private readonly RunConfirmPanel _confirmPanel;
+    private readonly RunFooter _footer;
     private readonly Timer _timer;
-    private readonly Button _close;
     private readonly bool _autoClose;
+
+    /// <summary>What Start runs in Confirm state; null for a window opened on a run already launched.</summary>
+    private Func<(RunManifest? Manifest, string? Error, string? Note)>? _launch;
+    private Batch.BatchCompletion _launchCompletion;
     private readonly bool _notifyOnFinish;
     private Timer? _closeTimer;
     private DateTime _lastProgress = DateTime.UtcNow;
@@ -104,69 +112,148 @@ public sealed class RunWatchWindow : Form
         }
     }
 
+    /// <summary>
+    /// Opens the watcher MODELESS in its Confirm state — the question that used to be a Revit
+    /// TaskDialog, asked in the window that then shows the progress — and returns at once, so the
+    /// command ends and Revit stays usable. <b>Start</b> runs <paramref name="launch"/> (which must
+    /// not touch the Revit API: it runs after the command returned) and, on success, attaches the
+    /// manifest and starts supervising through <see cref="RunSupervisor.StartInteractive"/>.
+    /// A launch that fails is reported in this window. <b>Cancel</b> (or closing) launches nothing.
+    /// </summary>
+    /// <param name="confirm">The question to ask, or null to launch immediately.</param>
+    /// <param name="launch">Returns the manifest, or null with an error; <c>Note</c> (what was
+    /// launched, where the log lives) goes into the log pane.</param>
+    /// <returns>The window, or null when it could not be shown (never throws).</returns>
+    public static RunWatchWindow? ShowConfirm(string title, RunConfirmation? confirm,
+        Func<(RunManifest? Manifest, string? Error, string? Note)> launch, Batch.BatchCompletion completion)
+    {
+        try
+        {
+            RunWatchWindow window = CreateConfirm(title, confirm, launch, completion);
+            window.Show();
+            // Nothing to ask (a lone supervised child that the command never confirmed): launch
+            // straight away, so the window still owns the launch text and any error.
+            if (confirm == null) window.StartLaunch();
+            return window;
+        }
+        catch (Exception ex)
+        {
+            Diagnostics.RunTrace.Mark("run watch confirm window failed: " + ex.Message);
+            return null;
+        }
+    }
+
+    /// <summary>Builds the confirm-state window without showing it — also what the render harness
+    /// uses to look at the Confirm state without a run.</summary>
+    internal static RunWatchWindow CreateConfirm(string title, RunConfirmation? confirm,
+        Func<(RunManifest? Manifest, string? Error, string? Note)> launch, Batch.BatchCompletion completion)
+    {
+        var window = new RunWatchWindow(
+            quitRevitWhenAcknowledged: completion == Batch.BatchCompletion.CloseRevit,
+            autoClose: false, notifyOnFinish: true);
+        window._launch = launch;
+        window._launchCompletion = completion;
+        window.Text = $"Batch progress — {title}";
+        window._status.DetailsTitle = window.Text;
+        if (confirm == null) return window;
+
+        window._confirmPanel.Set(confirm);
+        window._confirmPanel.Visible = true;
+        window._log.Visible = false;
+        window._bar.Visible = false;
+        window._status.SetMessage("Review, then press " + confirm.StartText + ".");
+        window._footer.ShowConfirm(confirm.StartText);
+        return window;
+    }
+
     /// <summary>Internal rather than private so the render harness can lay it out without a run.
     /// Callers open it through <see cref="ShowFor"/>.</summary>
     internal RunWatchWindow(RunManifest manifest, bool quitRevitWhenAcknowledged = false,
         bool autoClose = false, bool notifyOnFinish = true)
+        : this(quitRevitWhenAcknowledged, autoClose, notifyOnFinish)
     {
-        _manifest = manifest;
+        Attach(manifest);
+    }
+
+    /// <summary>Builds the window with no run behind it yet. <see cref="Attach"/> (or Start, in a
+    /// confirm window) gives it one.</summary>
+    private RunWatchWindow(bool quitRevitWhenAcknowledged, bool autoClose, bool notifyOnFinish)
+    {
         _quitWhenAcknowledged = quitRevitWhenAcknowledged;
         _autoClose = autoClose;
         _notifyOnFinish = notifyOnFinish;
 
-        int passes = Math.Max(1, manifest.BaseJob?.RunItems.Count ?? 1);
-        _expected = Math.Max(1, manifest.AllModels.Count * passes);
-
-        Text = $"Batch progress — {manifest.Name}";
+        Text = "Batch progress";
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(720, 420);
-        MinimumSize = new Size(560, 320);
+        AutoScaleDimensions = new SizeF(7F, 15F);
+        AutoScaleMode = AutoScaleMode.Font;
+        ClientSize = new Size(800, 500);
+        MinimumSize = new Size(600, 360);
         ShowInTaskbar = true;
 
         _bar = new ProgressBar { Dock = DockStyle.Bottom, Height = 22, Minimum = 0, Maximum = _expected };
-        _status = new StatusLine { DetailsTitle = Text, BorderStyle = BorderStyle.None, Padding = new Padding(0) };
+        _status = new StatusLine
+        {
+            DetailsTitle = Text,
+            BorderStyle = BorderStyle.None,
+            Padding = new Padding(0),
+            Font = RunWindowFonts.Body()
+        };
         _log = new TextBox
         {
             Dock = DockStyle.Fill,
             Multiline = true,
             ReadOnly = true,
             ScrollBars = ScrollBars.Vertical,
-            Font = new Font(FontFamily.GenericMonospace, 8.5F),
+            Font = RunWindowFonts.Log(),
             BorderStyle = BorderStyle.FixedSingle
         };
+        _confirmPanel = new RunConfirmPanel { Visible = false };
 
-        // Disabled until the run ends. The window is the only place the overall result appears, so
-        // it waits to be acknowledged rather than vanishing the moment the last model lands — you
-        // are usually not looking at the screen when that happens.
-        _close = new Button
-        {
-            Text = "Running…",
-            Enabled = false,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            MinimumSize = new Size(90, 26),
-            Anchor = AnchorStyles.Right
-        };
-        _close.Click += (_, _) => Close();
-        var buttonRow = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Bottom,
-            FlowDirection = FlowDirection.RightToLeft,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(0, 6, 0, 0)
-        };
-        buttonRow.Controls.Add(_close);
+        // Running… (disabled) until the run ends. The window is the only place the overall result
+        // appears, so it waits to be acknowledged rather than vanishing the moment the last model
+        // lands — you are usually not looking at the screen when that happens.
+        _footer = new RunFooter(this);
+        _footer.StartClicked += (_, _) => StartLaunch();
+        _footer.CancelClicked += (_, _) => Close();
+        _footer.CloseClicked += (_, _) => Close();
+        _footer.OpenLogRequested += (_, _) => RunResultPaths.OpenLog(_attached ? _manifest.TrackingLogPath : "");
+        _footer.OpenResultRequested += (_, _) => RunResultPaths.OpenResult(_attached ? _manifest.TrackingLogPath : "");
+        _footer.ShowRunning();
 
         var host = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12) };
         host.Controls.Add(_log);
+        host.Controls.Add(_confirmPanel);
         host.Controls.Add(_status);
         host.Controls.Add(_bar);
-        host.Controls.Add(buttonRow);
+        host.Controls.Add(_footer);
         Controls.Add(host);
-        AcceptButton = _close;
 
         Theme.Apply(this);
+
+        _timer = new Timer { Interval = 2000 };
+        _timer.Tick += (_, _) => Poll();
+    }
+
+    /// <summary>
+    /// Gives the window its run: sizes the bar, writes the opening lines and starts polling. Called
+    /// from the constructor for an already-launched run, and from Start for a confirm window.
+    /// </summary>
+    internal void Attach(RunManifest manifest)
+    {
+        _manifest = manifest;
+        _attached = true;
+
+        int passes = Math.Max(1, manifest.BaseJob?.RunItems.Count ?? 1);
+        _expected = Math.Max(1, manifest.AllModels.Count * passes);
+        _bar.Maximum = _expected;
+
+        Text = $"Batch progress — {manifest.Name}";
+        _status.DetailsTitle = Text;
+        _confirmPanel.Visible = false;
+        _log.Visible = true;
+        _bar.Visible = true;
+        _footer.ShowRunning();
 
         int groups = manifest.CurrentRound?.Groups.Count ?? 0;
         Append($"{manifest.AllModels.Count} model(s) x {passes} task(s) in {groups} Revit instance(s).");
@@ -174,13 +261,49 @@ public sealed class RunWatchWindow : Form
         Append("");
         _status.SetMessage($"0 of {_expected} — starting…");
 
-        _timer = new Timer { Interval = 2000 };
-        _timer.Tick += (_, _) => Poll();
         _timer.Start();
+    }
+
+    /// <summary>Start in the Confirm state: launch the groups, then become the progress window.</summary>
+    private void StartLaunch()
+    {
+        Func<(RunManifest? Manifest, string? Error, string? Note)>? launch = _launch;
+        if (launch == null || _attached) return;
+        _launch = null;   // one launch per window, however often Start is clicked
+
+        _footer.ShowRunning("Launching…");
+        _status.SetMessage("Launching…");
+        Refresh();
+
+        (RunManifest? Manifest, string? Error, string? Note) result;
+        try { result = launch(); }
+        catch (Exception ex) { result = (null, ex.Message, null); }
+
+        if (result.Manifest == null)
+        {
+            // Said here instead of in a TaskDialog: the question and its failure belong together.
+            _confirmPanel.Visible = false;
+            _log.Visible = true;
+            Append(result.Error ?? "Could not launch any group instances.");
+            _status.SetMessage("Launch failed — nothing was started.");
+            _footer.ShowDone(false, false);
+            return;
+        }
+
+        Attach(result.Manifest);
+        if (!string.IsNullOrWhiteSpace(result.Note))
+        {
+            Append(result.Note!);
+            Append("");
+        }
+        // Supervise: a group whose Revit dies would otherwise take its models with it, silently.
+        // Handed THIS window so the supervisor does not open a second one.
+        RunSupervisor.StartInteractive(result.Manifest, _launchCompletion, this);
     }
 
     private void Poll()
     {
+        if (!_attached) return;
         try
         {
             ReportNewRounds();
@@ -283,8 +406,7 @@ public sealed class RunWatchWindow : Form
 
         if (_autoClose)
         {
-            _close.Text = "Closing…";
-            _close.Enabled = false;
+            _footer.ShowRunning("Closing…");
             _closeTimer = new Timer { Interval = 1500 };
             _closeTimer.Tick += (_, _) =>
             {
@@ -296,9 +418,10 @@ public sealed class RunWatchWindow : Form
         else
         {
             // Hand the window over to the user: it now says what happened and waits to be dismissed.
-            _close.Text = "OK";
-            _close.Enabled = true;
-            _close.Focus();
+            // Close (it was "OK" — there is no question to answer), plus the two ways to look at
+            // what the run produced.
+            string log = _manifest.TrackingLogPath;
+            _footer.ShowDone(RunResultPaths.CanOpenLog(log), RunResultPaths.CanOpenResult(log));
         }
 
         if (_notifyOnFinish)

@@ -172,18 +172,21 @@ internal sealed class DoorWindowWindow : DrwToolWindow
         _items = new DataGridView
         {
             Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, AllowUserToDeleteRows = false,
-            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, RowHeadersVisible = false
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, RowHeadersVisible = false,
+            // A floor, so the window is sized to keep rows visible: without one the grid absorbed every
+            // shortfall and drew 1 px high under the wrapped notes at 150-200 % (E20).
+            MinimumSize = new Size(0, 96)
         };
         foreach ((string name, int weight) in new[] { ("Mark", 10), ("Size", 18), ("Qty", 8), ("Cell", 12), ("Types", 30), ("Warnings", 26) })
             _items.Columns.Add(new DataGridViewTextBoxColumn { Name = name, HeaderText = name, FillWeight = weight });
         var itemsPage = FormLayout.SingleColumn();
-        FormLayout.AddAutoRow(itemsPage, FormLayout.FlowRow(new Label { Text = "Schedule:", AutoSize = true, Margin = new Padding(3, 6, 3, 3) }, _doors, _windows, _unmarked));
+        FormLayout.AddAutoRow(itemsPage, WrappingRow(new Label { Text = "Schedule:", AutoSize = true, Margin = new Padding(3, 6, 3, 3) }, _doors, _windows, _unmarked));
         FormLayout.AddAutoRow(itemsPage, FormLayout.NoteLabel(this,
             "Doors and windows are separate sets, each with its own schedule, legends and sheets: save one preset for each. " +
             "One item per Type Mark of the placed types (types sharing a mark are merged)." +
             (data.Warnings.Count > 0 ? "\n" + string.Join("\n", data.Warnings) : "")));
         FormLayout.AddFillRow(itemsPage, _items, 100);
-        FormLayout.AddAutoRow(itemsPage, FormLayout.FlowRow(_live, apply));
+        FormLayout.AddAutoRow(itemsPage, WrappingRow(_live, apply));
         FormLayout.AddAutoRow(itemsPage, FormLayout.NoteLabel(this,
             "Live writes changed values inside your edit (one Undo takes back both); a change the cells cannot take — a new " +
             "Type Mark, a new size, a field added to the schedule — rebuilds the set a moment later. Apply now brings every " +
@@ -274,14 +277,14 @@ internal sealed class DoorWindowWindow : DrwToolWindow
         _legendName = new TextBox { Width = 240 };
         var layoutPage = DrwControls.Page(
             DrwControls.Group("Cell (paper mm)",
-                FormLayout.LabeledRow("Legend scale 1:", _scale),
-                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.CellWidth, "Cell width:"), _cellWidth, _cellReal),
-                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.ElevationBox, "Elevation box height:"), _elevBox, _elevReal),
-                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.PlanBox, "Plan box height:"), _planBox, _planReal),
-                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.Header, "Header strip height:"), _header),
+                FormLayout.LabeledRow("Legend scale 1:", FormLayout.ShortField(_scale)),
+                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.CellWidth, "Cell width:"), FormLayout.ShortField(_cellWidth, _cellReal)),
+                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.ElevationBox, "Elevation box height:"), FormLayout.ShortField(_elevBox, _elevReal)),
+                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.PlanBox, "Plan box height:"), FormLayout.ShortField(_planBox, _planReal)),
+                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.Header, "Header strip height:"), FormLayout.ShortField(_header)),
                 FormLayout.LabeledRow("Elevation box title:", _elevTitle),
                 FormLayout.LabeledRow("Plan box title:", _planTitle),
-                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.WallStub, "Wall either side in plan:"), _wallStub),
+                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.WallStub, "Wall either side in plan:"), FormLayout.ShortField(_wallStub)),
                 _elevationFirst,
                 FormLayout.NoteLabel(this, "The numbers match the sample cell; click a number there to jump to its field. " +
                     "Cell width and elevation box are minimums: an item that would not fit at this scale spans more cells, and its row of cells grows to fit it. " +
@@ -289,20 +292,20 @@ internal sealed class DoorWindowWindow : DrwToolWindow
                     "and a dimension line or text moved by hand stays where it was put."),
                 _resetWidths),
             DrwControls.Group("Table (paper mm)",
-                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.LineHeight, "Line height:"), _rowLine),
-                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.LabelWidth, "Label column width:"), _labelWidth),
-                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.Gap, "Gap before the value:"), _inset),
+                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.LineHeight, "Line height:"), FormLayout.ShortField(_rowLine)),
+                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.LabelWidth, "Label column width:"), FormLayout.ShortField(_labelWidth)),
+                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.Gap, "Gap before the value:"), FormLayout.ShortField(_inset)),
                 FormLayout.LabeledRow("Empty value shows:", _blank),
                 FormLayout.NoteLabel(this, "A value wraps at its cell's width (what is left past the label column and the gap), and its row grows a line for each line. " +
                     "Header text is 3 mm, table text 2 mm (TH Sarabun New).")),
             DrwControls.Group("Elevation",
-                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.FloorGap, "Floor line above the box bottom:"), _floorGap),
+                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.FloorGap, "Floor line above the box bottom:"), FormLayout.ShortField(_floorGap)),
                 FormLayout.LabeledRow("Floor line text (blank: none):", _floorLabel),
-                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.DimOffset, "Dimensions stand off by:"), _dimOffset),
+                FormLayout.LabeledRow(Numbered(DoorWindowDiagram.Part.DimOffset, "Dimensions stand off by:"), FormLayout.ShortField(_dimOffset)),
                 FormLayout.LabeledRow("Dimension type:", _dimType)),
             DrwControls.Group("Legends",
-                FormLayout.LabeledRow("Cells across:", _columns),
-                FormLayout.LabeledRow("Rows of cells down:", _rowsPerLegend),
+                FormLayout.LabeledRow("Cells across:", FormLayout.ShortField(_columns)),
+                FormLayout.LabeledRow("Rows of cells down:", FormLayout.ShortField(_rowsPerLegend)),
                 FormLayout.LabeledRow("Legend name ({n} = number):", _legendName),
                 FormLayout.NoteLabel(this, "Building again rebuilds the same legends (by this preset's name), so viewports on sheets stay. " +
                     "Header labels you dragged keep their place in their cell.")));
@@ -391,7 +394,7 @@ internal sealed class DoorWindowWindow : DrwToolWindow
                 FormLayout.LabeledRow("Title block:", _titleBlock),
                 FormLayout.LabeledRow("First sheet number:", _sheetNumber),
                 FormLayout.LabeledRow("Sheet name:", _sheetName),
-                FormLayout.LabeledRow("Margin inside the frame (mm):", _margin),
+                FormLayout.LabeledRow("Margin inside the frame (mm):", FormLayout.ShortField(_margin)),
                 FormLayout.NoteLabel(this, "One sheet per legend. Each legend holds what fits inside the title block's frame " +
                     "(red dashes, found from its lines) with the margin kept clear; the rest goes on the next sheet, numbered on " +
                     "from the first (A-12, A-13...). Cells across and rows of cells down then follow the frame, not the Layout tab. " +
@@ -401,7 +404,7 @@ internal sealed class DoorWindowWindow : DrwToolWindow
                 FormLayout.NoteLabel(this, "Written on the set's sheets at every build. Those marked * are what your sheet browser organization " +
                     "groups by, so the sheets land in the right folder; any other sheet parameter can be added.")),
             DrwControls.Group("Preview",
-                FormLayout.LabeledRow("Show sheet:", _sheetShown),
+                FormLayout.LabeledRow("Show sheet:", FormLayout.ShortField(_sheetShown)),
                 _sheetSummary));
         var sheetSample = new GroupBox { Text = "Sheet", Dock = DockStyle.Fill, Padding = new Padding(6) };
         _sheetPreview.Dock = DockStyle.Fill;
@@ -453,6 +456,18 @@ internal sealed class DoorWindowWindow : DrwToolWindow
         // Each tab its own label column: aligned across all four, the Layout tab's longest label set
         // the Sheets tab's too, and the title block combo was crushed to 77 px (UI layout, 2026-10-22).
         FormLayout.AlignLabels(this, itemsPage, fieldsPage, layoutPage, sheetFields);
+        // Grows to what the tabs hold (the Items grid's floor under its wrapped notes) as the font and
+        // DPI scale; GrowToShowPage alone cannot see inside the tab control.
+        if (Root != null) FormLayout.KeepFitted(this, Root);
+    }
+
+    /// <summary>A row that wraps onto a second line rather than running past the right edge at 150-200 %.</summary>
+    private static FlowLayoutPanel WrappingRow(params Control[] controls)
+    {
+        FlowLayoutPanel row = FormLayout.FlowRow(controls);
+        row.Dock = DockStyle.Fill;
+        row.WrapContents = true;
+        return row;
     }
 
     private bool IsDoor => _doors.Checked;

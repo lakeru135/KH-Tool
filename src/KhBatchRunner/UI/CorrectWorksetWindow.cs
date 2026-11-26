@@ -107,7 +107,7 @@ public sealed class CorrectWorksetWindow : Form
         };
         _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Categories", ReadOnly = true, FillWeight = 40 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Target workset", FillWeight = 32 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Find & rename (keyword)", FillWeight = 28 });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Find & rename (keyword)", FillWeight = 28, MinimumWidth = 200 });
         _grid.CellEndEdit += (_, e) =>
         {
             if (e.RowIndex < 0 || e.RowIndex >= _rules.Count) return;
@@ -402,7 +402,7 @@ public sealed class CorrectWorksetWindow : Form
         public PresetItem(ModelPreset preset) => Preset = preset;
         public override string ToString() => ModelSetAccess.Label(Preset, Preset.IsFolderBacked
             ? $"{Preset.Name}  [folder]"
-            : $"{Preset.Name}  ({Preset.Models.Count} models)");
+            : $"{Preset.Name}  ({UiText.Plural(Preset.Models.Count, "model")})");
     }
 
     private sealed class SetItem

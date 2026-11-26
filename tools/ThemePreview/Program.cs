@@ -785,6 +785,77 @@ internal static class Program
     /// modes now walk it — screenshots, the construction gate and the layout gate — and a window
     /// added to one of three copies is a window two gates never see.</para>
     /// </summary>
+    private static RunConfirmation SampleRunConfirmation() => new(
+        "Cut 6 model(s) for site 'T1A'?",
+        "Model set: Tower 1 (6 model(s))\n" +
+        "Site code: T1A (activates the matching site location and becomes the name prefix)\n" +
+        "Other site locations: DELETED from the cut copy\n" +
+        "Target folder: Project / Published / T1A\n\n" +
+        "Each model is cut on a local temp copy (the source is never modified) and published as a NEW " +
+        "cloud model in that folder.\n\n" +
+        "Parallel: 2 group(s) of up to 3. Each group opens in its own Revit instance and closes when " +
+        "it finishes. Concurrency: 2 at a time.");
+
+    private static RunManifest SampleRunManifest()
+    {
+        var models = new List<CloudModel>();
+        foreach (string n in new[] { "T1A-AR", "T1A-EE", "T1A-ST", "T2A-AR", "T2A-EE", "T2A-ST" })
+            models.Add(new CloudModel { DisplayName = n + ".rvt" });
+        var job = new ScheduledJob { Name = "Batch Run" };
+        job.RunItems.Add(new RunItem("Get Phase & Workset", RunItemKind.Action, null));
+        var manifest = new RunManifest
+        {
+            Name = "Batch Run",
+            BaseJob = job,
+            GroupSize = 3,
+            AllModels = models,
+            TrackingLogPath = @"C:\Users\You\Desktop\Test Forma Log\Log\20260726_Batch Run.csv"
+        };
+        manifest.Rounds.Add(new RunRound
+        {
+            Round = 1,
+            StartedAt = DateTime.Now,
+            Groups = new List<RunGroup>
+            {
+                new() { Models = models.GetRange(0, 3) },
+                new() { Models = models.GetRange(3, 3) },
+            }
+        });
+        return manifest;
+    }
+
+    /// <summary>A finished run's tracking log on disk (dest/Log/run.csv, one OK row per model), so the
+    /// Done state shows its Open log / Open result buttons. Returns the path.</summary>
+    private static string WriteSampleTrackingLog(IEnumerable<string> models)
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "KhThemePreviewRun", "Log");
+        Directory.CreateDirectory(dir);
+        string path = Path.Combine(dir, "run.csv");
+        var lines = new List<string> { "Time,Model,Task,Status,Message" };
+        foreach (string m in models)
+            lines.Add($"{DateTime.Now:s},{m},Get Phase & Workset,OK,12 workset(s) read");
+        File.WriteAllLines(path, lines);
+        return path;
+    }
+
+    /// <summary>The same sample the Controller's --render uses for the action results window.</summary>
+    private static ActionResultsWindow SampleActionResultsWindow()
+    {
+        var columns = new List<string> { "Workset", "Phase", "Design Option", "Elements", "Note" };
+        var rows = new List<IReadOnlyDictionary<string, string>>();
+        for (int i = 1; i <= 12; i++)
+            rows.Add(new Dictionary<string, string>
+            {
+                ["Workset"] = $"Shared Levels and Grids {i}",
+                ["Phase"] = i % 2 == 0 ? "New Construction" : "Existing",
+                ["Design Option"] = i % 3 == 0 ? "Option 1 (primary)" : "(none)",
+                ["Elements"] = (i * 137).ToString(),
+                ["Note"] = i % 4 == 0 ? "more than one phase on this workset" : ""
+            });
+        return new ActionResultsWindow("Get Phase & Workset", "T1A-AR.rvt", columns, rows,
+            "12 workset(s) read. Nothing was changed.", false);
+    }
+
     private static IEnumerable<(string Name, Func<Form> Make)> Windows()
     {
         var client = new DataManagementClient(new SessionTokenProvider());
@@ -793,6 +864,40 @@ internal static class Program
         yield return ("BatchRunWindow", () => new BatchRunWindow(client));
         yield return ("ScheduleRunWindow", () => new ScheduleRunWindow(client));
         yield return ("AboutWindow", () => new AboutWindow());
+        // RunWatchWindow (the split-run window): Confirm and Running states. Done needs a finished
+        // run and is not rendered here. BatchRunnerWindow is NOT listed: its constructor takes a
+        // UIApplication, so it cannot load without the Revit API assemblies.
+        yield return ("RunWatchWindow_Confirm", () => RunWatchWindow.CreateConfirm(
+            "Cut Model", SampleRunConfirmation(), () => (null, "preview", null), BatchCompletion.CloseDocuments));
+        yield return ("RunWatchWindow_Running", () => new RunWatchWindow(SampleRunManifest()));
+        // Done: a run whose results are all in. Poll() is the window's own state machine, so the
+        // window gets to Done the way a real run does — from a manifest and a tracking log — only
+        // without waiting for the 2 s timer or raising the finish toast (notifyOnFinish: false).
+        yield return ("RunWatchWindow_Done", () =>
+        {
+            var manifest = SampleRunManifest();
+            manifest.TrackingLogPath = WriteSampleTrackingLog(manifest.AllModels.Select(m => m.DisplayName));
+            manifest.State = RunState.Completed;
+            var window = new RunWatchWindow(manifest, notifyOnFinish: false);
+            typeof(RunWatchWindow).GetMethod("Poll", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
+            return window;
+        });
+        // The four dialogs the Controller's --render builds, which this list used to lack — so
+        // nothing guarded them. Same fixtures as there.
+        yield return ("EditScriptSetWindow", () => new EditScriptSetWindow());
+        yield return ("FormaFolderPickerWindow", () => new FormaFolderPickerWindow(
+            client, "Choose a folder", "Pick the folder to scan:", true));
+        yield return ("ActionResultsWindow", () => SampleActionResultsWindow());
+        yield return ("WorksetRenameApprovalDialog", () => new WorksetRenameApprovalDialog("T1A-AR.rvt",
+            new[]
+            {
+                new WorksetRenameProposal { Id = Autodesk.Revit.DB.WorksetId.InvalidWorksetId, From = "Shared Levels and Grids",
+                    To = "00_SHARED", RuleLabel = "3 categorie(s) → 00_SHARED" },
+                new WorksetRenameProposal { Id = Autodesk.Revit.DB.WorksetId.InvalidWorksetId, From = "Architecture Walls and Floors Level 01",
+                    To = "10_ARCH", RuleLabel = "12 categorie(s) → 10_ARCH" },
+                new WorksetRenameProposal { Id = Autodesk.Revit.DB.WorksetId.InvalidWorksetId, From = "STR", To = "20_STRUCT",
+                    RuleLabel = "4 categorie(s) → 20_STRUCT" },
+            }));
         yield return ("InitiateWindow", () => new InitiateWindow(PreviewPresets(), client));
         yield return ("BatchInteropWindow", () => new BatchInteropWindow(PreviewPresets(), "2026"));
         yield return ("ScheduleInteropWindow", () => new ScheduleInteropWindow(client, "2026"));
@@ -2008,7 +2113,9 @@ internal static class Program
             form.ShowInTaskbar = false;
             form.Show();
             SettleLayout(form);
-            int found = InspectBothSizes(form, name, "natural", quiet: true);
+            // THEMEPREVIEW_SCALED=1 prints each simulated-scale finding (the default only counts them).
+            bool loud = Environment.GetEnvironmentVariable("THEMEPREVIEW_SCALED") == "1";
+            int found = InspectBothSizes(form, name, $"natural {scale * 100:0}%", quiet: !loud);
             form.Close();
             return found;
         }

@@ -17,8 +17,10 @@ public sealed class CheckSheetPublishWindow : Form
     private readonly ModelDerivativeClient _md;
 
     private readonly ListBox _folderList;
-    private readonly TextBox _setNameBox;
     private readonly ComboBox _setCombo;
+    private readonly InputSetActions<FolderSet> _sets;
+    /// <summary>Name of the folder set currently loaded, so Save can RENAME rather than leave a twin.</summary>
+    private string? _loadedSetName;
     private readonly TextBox _csvBox;
     private readonly CheckBox _recurse;
     private readonly TextBox _folderBox;
@@ -76,16 +78,24 @@ public sealed class CheckSheetPublishWindow : Form
                 _folderList.Items.Remove(item);
         };
 
-        _setNameBox = new TextBox();
+        // One editable combo + Save / Duplicate / Delete — the shared InputSetActions pattern (as
+        // CutModelWindow). Picking a set in the combo loads it (this window's old Load button).
+        _setCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown };
+        _setCombo.SelectedIndexChanged += (_, _) =>
+        {
+            if (_setCombo.SelectedItem is FolderSet set) ApplySet(set.Clone());
+        };
+        _sets = new InputSetActions<FolderSet>(this, _setCombo,
+            FolderSetStore.LoadAll,
+            n => FolderSetStore.LoadAll().Any(f => f.Name.Equals(n, StringComparison.OrdinalIgnoreCase)),
+            FolderSetStore.Save, FolderSetStore.Delete,
+            f => f.Name, f => f.Clone(), (f, name) => f.Name = name,
+            f => f, o => o as FolderSet, Warn, noun: "folder set", boxLabel: "Saved set");
         var saveSet = new Button { Text = "Save set", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(80, 0) };
         saveSet.Click += (_, _) => SaveSet();
-
-        _setCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
-        var loadSet = new Button { Text = "Load", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(60, 0) };
-        loadSet.Click += (_, _) => LoadSet();
         var dupSet = new Button { Text = "Duplicate", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(80, 0) };
         dupSet.Click += (_, _) => DuplicateSet();
-        var deleteSet = new Button { Text = "Delete", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(60, 0) };
+        var deleteSet = new Button { Text = "Delete", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(70, 0) };
         deleteSet.Click += (_, _) => DeleteSet();
 
         _csvBox = new TextBox();
@@ -110,8 +120,7 @@ public sealed class CheckSheetPublishWindow : Form
         FormLayout.AddAutoRow(right, new Label { Text = "Folders in set:", AutoSize = true, Margin = new Padding(3, 4, 3, 2) });
         FormLayout.AddFillRow(right, _folderList, 100);
         FormLayout.AddAutoRow(right, FormLayout.FlowRow(_addButton, removeButton));
-        FormLayout.AddAutoRow(right, FormLayout.LabeledRow("Set name:", _setNameBox, saveSet));
-        FormLayout.AddAutoRow(right, FormLayout.LabeledRow("Saved sets:", _setCombo, loadSet, dupSet, deleteSet));
+        FormLayout.AddAutoRow(right, FormLayout.LabeledRow("Saved set:", _setCombo, saveSet, dupSet, deleteSet));
         FormLayout.AddAutoRow(right, FormLayout.LabeledRow("Sheet numbers CSV:", _csvBox, csvBrowse));
         FormLayout.AddAutoRow(right, _recurse);
         FormLayout.AddAutoRow(right, FormLayout.LabeledRow("Destination folder:", _folderBox, destBrowse));
@@ -138,8 +147,8 @@ public sealed class CheckSheetPublishWindow : Form
         note.ForeColor = Theme.Dim(note);
         Load += (_, _) =>
         {
-            try { split.SplitterDistance = 380; } catch { /* clamped */ }
-            RefreshSetCombo();
+            FormLayout.FitSplit(this, split, right, _status);
+            _sets.Reload(selectName: null);
             controller.LoadHubs();
         };
     }
@@ -157,68 +166,37 @@ public sealed class CheckSheetPublishWindow : Form
 
     private List<FolderRef> CurrentFolders() => _folderList.Items.Cast<FolderRef>().ToList();
 
-    private void SaveSet()
+    /// <summary>A folder set back into the list; marks it as the currently-loaded NAMED set.</summary>
+    private void ApplySet(FolderSet set)
     {
-        string name = _setNameBox.Text.Trim();
-        if (string.IsNullOrEmpty(name)) { Warn("Enter a set name to save."); return; }
-        if (_folderList.Items.Count == 0) { Warn("Add at least one folder before saving."); return; }
-        try
-        {
-            FolderSetStore.Save(new FolderSet { Name = name, Folders = CurrentFolders() });
-            RefreshSetCombo(name);
-            SetStatus($"Saved folder set '{name}'.");
-        }
-        catch (Exception ex) { Warn("Could not save set: " + ex.Message); }
-    }
-
-    private void LoadSet()
-    {
-        if (_setCombo.SelectedItem is not FolderSet set) return;
         _folderList.Items.Clear();
         foreach (FolderRef fr in set.Folders) _folderList.Items.Add(fr);
-        _setNameBox.Text = set.Name;
+        _loadedSetName = set.Name;
         SetStatus($"Loaded folder set '{set.Name}' ({set.Folders.Count} folder(s)).");
     }
 
-    /// <summary>
-    /// Forks the selected folder set to a new "&lt;name&gt; (copy)" and loads the copy — the starting
-    /// point for "the same folders plus one more" without retyping the whole list.
-    /// </summary>
-    private void DuplicateSet()
+    private void SaveSet()
     {
-        if (_setCombo.SelectedItem is not FolderSet set) { Warn("Select a saved folder set to duplicate."); return; }
-        FolderSet copy = set.Clone();
-        copy.Name = SetDuplication.UniqueName(set.Name, FolderSetStore.LoadAll().Select(f => f.Name));
         try
         {
-            FolderSetStore.Save(copy);
+            _sets.Save(ref _loadedSetName,
+                name => new FolderSet { Name = name, Folders = CurrentFolders() },
+                () => _folderList.Items.Count == 0 ? "Add at least one folder before saving." : null);
         }
-        catch (Exception ex) { Warn("Could not duplicate set: " + ex.Message.Split('\n')[0]); return; }
-        RefreshSetCombo(copy.Name);
-        LoadSet();
-        SetStatus($"Duplicated '{set.Name}' as '{copy.Name}'.");
+        catch (Exception ex) { Warn("Could not save set: " + ex.Message); return; }
+        // Only claim a save when one happened (a declined overwrite leaves the typed name unsaved).
+        if (_loadedSetName != null && _setCombo.Text.Trim().Equals(_loadedSetName, StringComparison.OrdinalIgnoreCase))
+            SetStatus($"Saved folder set '{_loadedSetName}'.");
     }
+
+    /// <summary>Forks the selected folder set to "&lt;name&gt; (copy)" and loads the copy — see
+    /// <see cref="InputSetActions{T}.Duplicate"/>.</summary>
+    private void DuplicateSet() => _sets.Duplicate();
 
     private void DeleteSet()
     {
-        if (_setCombo.SelectedItem is not FolderSet set) return;
-        if (MessageBox.Show(this, $"Delete folder set '{set.Name}'?", Text,
-                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
-            return;
-        FolderSetStore.Delete(set.Name);
-        RefreshSetCombo();
-        SetStatus($"Deleted folder set '{set.Name}'.");
-    }
-
-    private void RefreshSetCombo(string? select = null)
-    {
-        _setCombo.Items.Clear();
-        foreach (FolderSet set in FolderSetStore.LoadAll())
-            _setCombo.Items.Add(set);
-        if (select != null)
-            for (int i = 0; i < _setCombo.Items.Count; i++)
-                if (_setCombo.Items[i] is FolderSet s && s.Name == select) { _setCombo.SelectedIndex = i; break; }
-        if (_setCombo.SelectedIndex < 0 && _setCombo.Items.Count > 0) _setCombo.SelectedIndex = 0;
+        try { _sets.Delete(ref _loadedSetName); }
+        catch (Exception ex) { Warn("Could not delete set: " + ex.Message); }
     }
 
     private void BrowseForCsv()

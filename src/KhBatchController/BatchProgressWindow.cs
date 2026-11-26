@@ -19,6 +19,10 @@ internal sealed class BatchProgressWindow : Form
     private readonly TextBox _output;
     private readonly Label _status;
     private readonly Button _close;
+    /// <summary>True from the moment the window opens until the worker reports back. Closing the
+    /// window mid-run would not stop the run (the worker is a background thread owning a separate
+    /// Revit), it would only hide it — so Close and the title-bar X are refused while this is set.</summary>
+    private bool _running = true;
 
     public BatchProgressWindow(BrokerTokenProvider broker, string revitExe,
                                IReadOnlyList<ModelPreset> sets, IReadOnlyList<RunItem> runItems,
@@ -59,10 +63,17 @@ internal sealed class BatchProgressWindow : Form
             Location = new Point(608, 380),
             Size = new Size(100, 28),
             Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
-            DialogResult = DialogResult.OK
+            DialogResult = DialogResult.OK,
+            Enabled = false // until the run finishes; see _running
         };
         Controls.Add(_close);
         CancelButton = _close;
+
+        // The X, Alt+F4 and Esc all arrive here. Let Windows shutdown through; refuse the rest mid-run.
+        FormClosing += (_, e) =>
+        {
+            if (_running && e.CloseReason != CloseReason.WindowsShutDown) e.Cancel = true;
+        };
 
         Theme.Apply(this);
         _status.ForeColor = Theme.Dim(_status);
@@ -96,6 +107,8 @@ internal sealed class BatchProgressWindow : Form
             if (!IsDisposed)
                 BeginInvoke(() =>
                 {
+                    _running = false;
+                    _close.Enabled = true;
                     Text = "Finished";
                     _status.Text = ok ? "Finished." : "Finished with errors — see the log.";
                 });

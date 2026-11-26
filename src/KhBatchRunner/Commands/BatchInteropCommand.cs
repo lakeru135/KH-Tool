@@ -50,7 +50,7 @@ public sealed class BatchInteropCommand : IExternalCommand
         }
 
         List<ModelPreset> presets = PresetStore.LoadAll();
-        if (BatchCommandFlow.NoModelSets(presets, "KH Batch Script Runner", "this action"))
+        if (BatchCommandFlow.NoModelSets(presets, Product.Name, "this action"))
             return Result.Cancelled;
 
         using var dialog = new BatchInteropWindow(presets, year);
@@ -79,13 +79,19 @@ public sealed class BatchInteropCommand : IExternalCommand
             DestinationFolder = dialog.DestinationFolder,
             ProjectLogName = dialog.ProjectLogName
         };
+        // This command asks nothing of its own; the only thing worth saying before a run is that
+        // parallel groups were refused (it used to be a notice dialog), so that is the confirmation.
+        string? blockedReason = InteropSplitPolicy.BlockedReason(baseJob, year);
+        RunConfirmation? blockedNotice = InteractiveSplit.NoteBlocked(
+            null, action.Name, dialog.SplitEnabled ? blockedReason : null);
         Result? split = InteractiveSplit.TryLaunch(
             uiApp, baseJob, chosen.Models, dialog.SplitEnabled, action.Name,
             dialog.SelectedCompletion,
-            InteropSplitPolicy.BlockedReason(baseJob, year),
+            blockedReason,
             // Always a separate Revit, even for a set too small to split: the Model Checker opens
             // models Revit can crash on, and that must never take this Revit down with it.
-            alwaysSupervise: true);
+            alwaysSupervise: true,
+            actionConfirm: blockedNotice);
         if (split != null) return split.Value;
 
         try
@@ -93,11 +99,12 @@ public sealed class BatchInteropCommand : IExternalCommand
             // Modal message-loop runner — see BatchActionCommandBase for
             // why batches never run from an Idling event (cloud opens hang/crash there).
             BatchRunnerWindow.RunModal(uiApp, engine, chosen,
-                $"Run: {action.Name}", dialog.SelectedCompletion);
+                $"Run: {action.Name}", dialog.SelectedCompletion, blockedNotice);
+            if (BatchRunnerWindow.LastRunCancelled) return Result.Cancelled;
         }
         catch (Exception ex)
         {
-            TaskDialog.Show("KH Batch Script Runner", $"Could not run batch: {ex.Message}");
+            TaskDialog.Show(Product.Name, $"Could not run batch: {ex.Message}");
             return Result.Failed;
         }
 

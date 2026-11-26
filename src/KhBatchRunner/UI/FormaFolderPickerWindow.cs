@@ -46,7 +46,8 @@ public sealed class FormaFolderPickerWindow : Form
 
         var tree = new TreeView { Dock = DockStyle.Fill, HideSelection = false };
 
-        _prompt = new Label { Text = prompt, AutoSize = true, Margin = new Padding(3, 4, 3, 4) };
+        // NoteLabel: wraps to the window width and has UseMnemonic off (a folder name with "&" is not an access key).
+        _prompt = FormLayout.NoteLabel(this, prompt);
 
         _okButton = new Button
         {
@@ -110,6 +111,7 @@ public sealed class FormaFolderPickerWindow : Form
         };
 
         Theme.Apply(this);
+        FormLayout.KeepFitted(this, root, status); // the button row ran out of room at 200 %
         Load += (_, _) => controller.LoadHubs();
     }
 

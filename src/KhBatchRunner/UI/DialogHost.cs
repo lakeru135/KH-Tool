@@ -20,7 +20,7 @@ internal static class DialogHost
         }
         catch (Exception ex)
         {
-            TaskDialog.Show("KH Batch Script Runner",
+            TaskDialog.Show(Product.Name,
                 "The dialog could not open or failed while running:\n\n" +
                 ex.GetType().Name + ": " + ex.Message);
         }

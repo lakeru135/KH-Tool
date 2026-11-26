@@ -33,9 +33,6 @@ internal sealed class BatchRunWindow : Form
 
     private readonly CheckedListBox _setsList;
     private readonly CheckedListBox _actionsList;
-    /// <summary>Held because the two list columns are re-laid out on resize, and this label is the
-    /// right column's heading — it has to travel with it.</summary>
-    private readonly Label _actionsLabel;
     private readonly ComboBox _syncCombo;
     private readonly ComboBox _completionCombo;
     private readonly Label _splitNote;
@@ -69,31 +66,36 @@ internal sealed class BatchRunWindow : Form
         ClientSize = new Size(760, 610);
         MinimumSize = new Size(760, 560);
 
-        Controls.Add(new Label { Text = "Model sets", Location = new Point(12, 12), AutoSize = true });
+        // Laid out with tables rather than fixed coordinates, so the combos, the destination box and
+        // the output pane follow the window when it is resized. Two list columns share the width
+        // equally (the old code re-positioned them in a Resize handler to do the same thing).
+        Button Mk(string text, int minW)
+        {
+            return new Button
+            {
+                Text = text, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                MinimumSize = new Size(minW, 0), Margin = new Padding(3, 2, 3, 2)
+            };
+        }
+        Label Heading(string text) =>
+            new Label { Text = text, AutoSize = true, Margin = new Padding(3, 6, 3, 2) };
+
         // IntegralHeight keeps the box a whole number of rows tall. With it off, the last row was
         // sliced in half and read as a rendering fault rather than "scroll for more".
+        // Dock=Fill with a floor, so the lists grow with the window but never collapse.
         _setsList = new CheckedListBox
         {
-            Location = new Point(12, 32),
-            Size = new Size(360, 154),
-            CheckOnClick = true,
-            IntegralHeight = true
+            Dock = DockStyle.Fill, MinimumSize = new Size(0, 154), CheckOnClick = true,
+            IntegralHeight = true, Margin = new Padding(3, 0, 8, 3)
         };
         foreach (ModelPreset s in _sets)
             _setsList.Items.Add(KhBatchRunner.UI.ModelSetAccess.Label(s, $"{s.Name}  ({s.Models.Count})"));
-        Controls.Add(_setsList);
 
-        _actionsLabel = new Label { Text = "Actions", Location = new Point(388, 12), AutoSize = true };
-        Controls.Add(_actionsLabel);
         _actionsList = new CheckedListBox
         {
-            Location = new Point(388, 32),
-            Size = new Size(360, 154),
-            CheckOnClick = true,
-            IntegralHeight = true
+            Dock = DockStyle.Fill, MinimumSize = new Size(0, 154), CheckOnClick = true,
+            IntegralHeight = true, Margin = new Padding(8, 0, 3, 3)
         };
-        Controls.Add(_actionsList);
-
         // Script sets sit in the same list as actions, so a run can interleave them the way the
         // add-in's RunItems list does — order in the list is order of execution.
         foreach (ScriptSet script in ScriptSetStore.LoadAll())
@@ -102,149 +104,166 @@ internal sealed class BatchRunWindow : Form
             _scriptSets[ScriptPrefix + script.Name] = script;
         }
 
-        // ---- options, mirroring the add-in's Batch Run dialog --------------------------------
-        Controls.Add(new Label { Text = "Model treatment", Location = new Point(12, 192), AutoSize = true });
-        _syncCombo = new ComboBox
+        var lists = new TableLayoutPanel
         {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Location = new Point(12, 212),
-            Size = new Size(230, 23)
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, Margin = new Padding(0),
+            // The row holds a heading plus the 154px list floor; a percent row does not report its
+            // children's minimums to the parent table, so say it here or the window can be fitted too short.
+            MinimumSize = new Size(0, 190)
         };
+        lists.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        lists.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        lists.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        lists.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        lists.Controls.Add(Heading("Model sets"), 0, 0);
+        lists.Controls.Add(Heading("Actions"), 1, 0);
+        lists.Controls.Add(_setsList, 0, 1);
+        lists.Controls.Add(_actionsList, 1, 1);
+
+        // ---- options, mirroring the add-in's Batch Run dialog --------------------------------
+        _syncCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
         _syncCombo.Items.Add("Sync changes to central");
         _syncCombo.Items.Add("Don't sync (dry run)");
         _syncCombo.SelectedIndex = 1; // Dry run (default), matching the add-in's dialogs.
-        Controls.Add(_syncCombo);
 
-        Controls.Add(new Label { Text = "When finished", Location = new Point(258, 192), AutoSize = true });
-        _completionCombo = new ComboBox
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Location = new Point(258, 212),
-            Size = new Size(230, 23)
-        };
+        _completionCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
         _completionCombo.Items.Add("Close files");
         _completionCombo.Items.Add("Leave files open");
         _completionCombo.Items.Add("Close Revit when complete");
         _completionCombo.SelectedIndex = 2; // an unattended worker should quit, as in the add-in
         _completionCombo.SelectedIndexChanged += (_, _) => UpdateGroupEnabled();
-        Controls.Add(_completionCombo);
 
         // No split-size box: the shape is derived from the model count and this PC, exactly as in
         // the add-in (InstanceBudget.AutoGroupSize). What is worth saying is that it happens at all,
-        // and the one setting that turns it off.
-        // Sized to the column, not to the sentence: at MinimumSize the window is 760 wide, so this
-        // label has 760 - 504 - 12 = 244px and anything wider is silently cut off at the right edge.
-        // The "Leave files open" caveat is carried by DIMMING the note (UpdateGroupEnabled) rather
-        // than by more words, which is what makes it fit.
+        // and the one setting that turns it off. Two short lines so it fits the third column at the
+        // minimum width; the "Leave files open" caveat is carried by DIMMING the note
+        // (UpdateGroupEnabled) rather than by more words. How many workers this PC allows is reported
+        // by BatchRun as "Limit : …" when the run starts, which is where the number is actually useful.
         _splitNote = new Label
         {
-            // Two lines, not three: the row below starts at y=246, so a third line is clipped.
-            // How many workers this PC allows is reported by BatchRun as "Limit : …" when the run
-            // starts, which is where the number is actually useful.
             Text = "Large runs auto-split across\nseveral Revit workers.",
-            Location = new Point(504, 192),
-            Size = new Size(244, 40),
-            AutoSize = false,
-            UseMnemonic = false
+            AutoSize = true, UseMnemonic = false, Anchor = AnchorStyles.Left, Margin = new Padding(12, 0, 3, 3)
         };
-        Controls.Add(_splitNote);
 
-        Controls.Add(new Label { Text = "Log destination", Location = new Point(12, 246), AutoSize = true });
+        // Heading row above, combo row below, three equal columns; the note sits under the third heading.
+        var options = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 3, RowCount = 2, Margin = new Padding(0)
+        };
+        options.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3f));
+        options.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3f));
+        options.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.4f));
+        options.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        options.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        options.Controls.Add(Heading("Model treatment"), 0, 0);
+        options.Controls.Add(Heading("When finished"), 1, 0);
+        options.Controls.Add(_syncCombo, 0, 1);
+        options.Controls.Add(_completionCombo, 1, 1);
+        options.Controls.Add(_splitNote, 2, 1);
+
         _destinationBox = new TextBox
         {
-            Location = new Point(12, 266),
-            Size = new Size(650, 23),
-            Text = ScheduleStore.DefaultDestinationFolder(),
-            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+            Dock = DockStyle.Fill, Text = ScheduleStore.DefaultDestinationFolder()
         };
-        Controls.Add(_destinationBox);
-
-        Controls.Add(new Label { Text = "Project log name", Location = new Point(12, 300), AutoSize = true });
-        _projectLogBox = new TextBox
-        {
-            Location = new Point(12, 320),
-            Size = new Size(230, 23)
-        };
-        Controls.Add(_projectLogBox);
-        Controls.Add(new Label
-        {
-            Text = "(blank = the model set's name)",
-            Location = new Point(250, 324),
-            AutoSize = true
-        });
-
-        var browse = new Button
-        {
-            Text = "…",
-            Location = new Point(668, 265),
-            Size = new Size(36, 25),
-            Anchor = AnchorStyles.Top | AnchorStyles.Right
-        };
+        // A real button: the old 36px "…" was easy to miss and gave no hint what it did.
+        Button browse = Mk("Browse…", 80);
         browse.Click += (_, _) =>
         {
             using var dialog = new FolderBrowserDialog { SelectedPath = _destinationBox.Text };
             if (dialog.ShowDialog(this) == DialogResult.OK) _destinationBox.Text = dialog.SelectedPath;
         };
-        Controls.Add(browse);
-
-        _runButton = new Button
+        var destinationRow = new TableLayoutPanel
         {
-            Text = "Run now",
-            Location = new Point(12, 354),
-            Size = new Size(120, 30)
+            Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2, RowCount = 1, Margin = new Padding(0)
         };
-        _runButton.Click += OnRun;
-        Controls.Add(_runButton);
+        destinationRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        destinationRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        destinationRow.Controls.Add(_destinationBox, 0, 0);
+        destinationRow.Controls.Add(browse, 1, 0);
 
+        _projectLogBox = new TextBox { Width = 230 };
+        var projectLogRow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0)
+        };
+        projectLogRow.Controls.Add(_projectLogBox);
+        projectLogRow.Controls.Add(new Label
+        {
+            Text = "(blank = the model set's name)", AutoSize = true, Margin = new Padding(8, 6, 3, 0)
+        });
+
+        _runButton = Mk("Run now", 120);
+        _runButton.Click += OnRun;
         _status = new Label
         {
-            Location = new Point(144, 360),
-            Size = new Size(560, 20),
-            Text = "Runs in a separate Revit; this window stays usable.",
-            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+            Dock = DockStyle.Fill, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft,
+            Text = "Runs in a separate Revit; this window stays usable.", Margin = new Padding(8, 0, 3, 0)
         };
-        Controls.Add(_status);
+        var runRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2, RowCount = 1, Margin = new Padding(0, 6, 0, 0)
+        };
+        runRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        runRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        runRow.Controls.Add(_runButton, 0, 0);
+        runRow.Controls.Add(_status, 1, 0);
 
         _output = new TextBox
         {
-            Location = new Point(12, 394),
-            Size = new Size(736, 200),
-            Multiline = true,
-            ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical,
-            Font = new Font(FontFamily.GenericMonospace, 8.5F),
-            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom
+            Dock = DockStyle.Fill, MinimumSize = new Size(0, 90), Multiline = true, ReadOnly = true,
+            ScrollBars = ScrollBars.Vertical, Font = new Font(FontFamily.GenericMonospace, 8.5F),
+            Margin = new Padding(3, 6, 3, 3)
         };
-        Controls.Add(_output);
+
+        // Close, bottom-right: the window had no way out but the title-bar X.
+        var closeButton = Mk("Close", 90);
+        closeButton.DialogResult = DialogResult.Cancel;
+        var footer = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Margin = new Padding(0, 6, 0, 0)
+        };
+        footer.Controls.Add(closeButton);
+        CancelButton = closeButton;
+
+        // One column. The lists and the output pane are the two rows that flex (55 / 45 of what the
+        // fixed rows leave); every other row is auto-height so nothing overlaps at high DPI.
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 1, Padding = new Padding(12),
+            GrowStyle = TableLayoutPanelGrowStyle.AddRows
+        };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        void Auto(Control c) { root.RowStyles.Add(new RowStyle(SizeType.AutoSize)); root.Controls.Add(c, 0, root.RowStyles.Count - 1); }
+        void Fill(Control c, float pct) { root.RowStyles.Add(new RowStyle(SizeType.Percent, pct)); root.Controls.Add(c, 0, root.RowStyles.Count - 1); }
+        Fill(lists, 55);
+        Auto(options);
+        Auto(Heading("Log destination"));
+        Auto(destinationRow);
+        Auto(Heading("Project log name"));
+        Auto(projectLogRow);
+        Auto(runRow);
+        Fill(_output, 45);
+        Auto(footer);
+        Controls.Add(root);
 
         Theme.Apply(this);
         _status.ForeColor = Theme.Dim(_status);
 
-        // Anchors cannot express "two equal columns": the right one's LEFT edge has to move, and an
-        // anchor only pins edges to the form. So the pair is positioned in code, on every resize.
-        Resize += (_, _) => LayoutListColumns();
-        LayoutListColumns();
+        // Fit to the content and refuse to be dragged below it: the fill rows only flex ABOVE their
+        // minimums, so a window smaller than the content would paint the lists over the options.
+        ClientSize = new Size(
+            Math.Max(ClientSize.Width, root.PreferredSize.Width),
+            Math.Max(ClientSize.Height, root.PreferredSize.Height));
+        MinimumSize = Size;
+        FormLayout.KeepFitted(this, root);
 
         LoadActions();
         UpdateGroupEnabled();
-    }
-
-    /// <summary>Splits the width between the Model sets and Actions lists, keeping the gutter fixed.</summary>
-    private void LayoutListColumns()
-    {
-        const int margin = 12, gutter = 16, top = 32;
-        int available = ClientSize.Width - (margin * 2) - gutter;
-        if (available < 200) return;              // mid-construction or absurdly small; leave as built
-
-        int column = available / 2;
-        int rightX = margin + column + gutter;
-
-        _setsList.Location = new Point(margin, top);
-        _setsList.Size = new Size(column, _setsList.Height);
-
-        _actionsLabel.Location = new Point(rightX, 12);
-        _actionsList.Location = new Point(rightX, top);
-        _actionsList.Size = new Size(column, _actionsList.Height);
     }
 
     /// <summary>
@@ -343,11 +362,19 @@ internal sealed class BatchRunWindow : Form
                 ok = false;
             }
 
-            BeginInvoke(() =>
+            // The window may have been closed mid-run; marshalling onto a dead handle would throw
+            // on this background thread and take the launcher down with it.
+            if (IsDisposed || !IsHandleCreated) return;
+            try
             {
-                _runButton.Enabled = true;
-                _status.Text = ok ? "Finished." : "Finished with errors — see the log.";
-            });
+                BeginInvoke(() =>
+                {
+                    _runButton.Enabled = true;
+                    _status.Text = ok ? "Finished." : "Finished with errors — see the log.";
+                });
+            }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
         })
         { IsBackground = true, Name = "ControllerBatchRun" };
 
@@ -359,7 +386,14 @@ internal sealed class BatchRunWindow : Form
     private void Append(string line)
     {
         if (IsDisposed) return;
-        if (InvokeRequired) { BeginInvoke(() => Append(line)); return; }
+        if (InvokeRequired)
+        {
+            // Closed mid-run: the handle may be gone between the check above and this call.
+            try { if (IsHandleCreated) BeginInvoke(() => Append(line)); }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+            return;
+        }
 
         _output.AppendText(line + Environment.NewLine);
     }

@@ -30,12 +30,12 @@ public sealed class InitiateToFormaCommand : IExternalCommand
         UIApplication uiApp = commandData.Application;
 
         List<ModelPreset> presets = PresetStore.LoadAll();
-        if (BatchCommandFlow.NoModelSets(presets, "KH Batch Script Runner", "Initiate to Forma"))
+        if (BatchCommandFlow.NoModelSets(presets, Product.Name, "Initiate to Forma"))
             return Result.Cancelled;
 
         InitiateWindow? dialog = BatchCommandFlow.TryCreateDialog(
             () => new InitiateWindow(presets, new DataManagementClient(new SessionTokenProvider())),
-            "KH Batch Script Runner", "Initiate");
+            Product.Name, "Initiate");
         if (dialog == null) return Result.Failed;
         using var _dlg = dialog;
         if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
@@ -49,19 +49,14 @@ public sealed class InitiateToFormaCommand : IExternalCommand
         if (target == null) return Result.Failed;
 
         // Preview + confirm — this publishes NEW cloud models, so make the destination explicit.
-        var confirm = new TaskDialog("Batch Initiate to Forma")
-        {
-            MainInstruction = $"Publish {chosen.Models.Count} model(s) to Forma?",
-            MainContent =
-                $"Model set: {chosen.Name}\n" +
-                $"Target folder: {inputs.FolderPath}\n\n" +
-                (setNote != null ? setNote + "\n\n" : "") +
-                "Each model is published as a NEW cloud model in that folder. Continue?",
-            CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
-            DefaultButton = TaskDialogResult.No
-        };
-        if (confirm.Show() != TaskDialogResult.Yes)
-            return Result.Cancelled;
+        // Asked in the run window (Confirm state), not a TaskDialog.
+        var confirm = new RunConfirmation(
+            $"Publish {chosen.Models.Count} model(s) to Forma?",
+            $"Model set: {chosen.Name}\n" +
+            $"Target folder: {inputs.FolderPath}\n\n" +
+            (setNote != null ? setNote + "\n\n" : "") +
+            "Each model is published as a NEW cloud model in that folder.",
+            "Publish");
 
         var action = new InitiateToFormaAction(target);
 
@@ -82,7 +77,8 @@ public sealed class InitiateToFormaCommand : IExternalCommand
                 DestinationFolder = inputs.DestinationFolder,
                 ProjectLogName = inputs.ProjectLogName
             },
-            chosen.Models, dialog.SplitEnabled, action.Name, dialog.SelectedCompletion);
+            chosen.Models, dialog.SplitEnabled, action.Name, dialog.SelectedCompletion,
+            actionConfirm: confirm);
         if (split.HasValue) return split.Value;
 
         // Modal message-loop runner, NOT BatchIdlingDriver. Initiate opens each SOURCE model (often
@@ -90,6 +86,7 @@ public sealed class InitiateToFormaCommand : IExternalCommand
         // what left the "Open Model" dialog stuck here — the same bug the Multi Model Check/Action
         // buttons had. See BatchCommandFlow.RunModal.
         return BatchCommandFlow.RunModal(uiApp, action, chosen, inputs.DestinationFolder,
-            inputs.ProjectLogName, dialog.SelectedCompletion, "KH Batch Script Runner", "Initiate");
+            inputs.ProjectLogName, dialog.SelectedCompletion, Product.Name, "Initiate",
+            confirm);
     }
 }

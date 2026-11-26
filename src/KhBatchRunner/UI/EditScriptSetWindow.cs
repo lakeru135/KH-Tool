@@ -78,6 +78,9 @@ public sealed class EditScriptSetWindow : Form
 
         Theme.Apply(this);
         FormLayout.AlignLabels(this);
+        // Grows with the content (and refuses to shrink below it) at any DPI scale: the fixed
+        // 560x460 left the saved-set row's buttons on top of its combo at 150 % and 200 %.
+        FormLayout.KeepFitted(this, root, _status);
         RefreshSetsCombo();
     }
 

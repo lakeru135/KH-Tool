@@ -91,37 +91,43 @@ public static partial class ScheduledRunner
             CanSplit(job, combined.Models, destFolder, projectLog, uiApp.Application.VersionNumber))
         {
             int groups = ChunkLauncher.GroupCount(combined.Models.Count, splitSize);
-            if (groups > 1)
-            {
-                var confirm = new Autodesk.Revit.UI.TaskDialog("Run now — parallel groups")
-                {
-                    MainInstruction = $"Run {combined.Models.Count} models as {groups} group(s) of up to {splitSize}?",
-                    MainContent =
-                        "Each group opens in its own Revit instance and closes when it finishes. " +
-                        "Concurrency: " + InstanceBudget.Describe(combined.Models) + ".\n\nContinue?",
-                    CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
-                    DefaultButton = TaskDialogResult.No
-                };
-                if (confirm.Show() != TaskDialogResult.Yes)
-                    return true; // user declined the split; nothing ran (LastRunAt not stamped)
-            }
 
-            RunManifest? manifest = ChunkLauncher.LaunchSupervised(
-                job, combined.Models, splitSize, uiApp.Application.VersionNumber, out string? chunkErr);
-            if (manifest == null)
+            // Asked in the watch window (Confirm state) rather than a TaskDialog; a lone supervised
+            // child (groups == 1) asks nothing, as before. Declining or closing the window leaves
+            // LastRunAt untouched — nothing ran.
+            UI.RunConfirmation? confirm = groups > 1
+                ? new UI.RunConfirmation(
+                    $"Run {combined.Models.Count} models as {groups} group(s) of up to {splitSize}?",
+                    "Each group opens in its own Revit instance and closes when it finishes. " +
+                    "Concurrency: " + InstanceBudget.Describe(combined.Models) + ".",
+                    "Launch groups")
+                : null;
+
+            // Captured now: the launch runs from the window's Start click, after this command has
+            // returned, and must not touch the Revit Application object.
+            string revitVersion = uiApp.Application.VersionNumber;
+            IReadOnlyList<CloudModel> models = combined.Models;
+            UI.RunWatchWindow? watch = UI.RunWatchWindow.ShowConfirm(
+                title, confirm,
+                () =>
+                {
+                    RunManifest? manifest = ChunkLauncher.LaunchSupervised(
+                        job, models, splitSize, revitVersion, out string? chunkErr);
+                    if (manifest == null)
+                        return (null, chunkErr ?? "Could not launch any group instances.", null);
+
+                    // Stamped only once something really launched (it used to follow the confirm).
+                    job.LastRunAt = DateTime.Now;
+                    ScheduleStore.Save(job);
+                    return (manifest, null, ChunkLauncher.DescribeLaunch(manifest, splitSize) +
+                                            (chunkErr != null ? $"\n\n{chunkErr}" : ""));
+                },
+                job.Completion);
+            if (watch == null)
             {
-                error = chunkErr ?? "Could not launch any group instances.";
+                error = "Could not open the run window.";
                 return false;
             }
-            RunSupervisor.StartInteractive(manifest, job.Completion);
-            int launched = manifest.CurrentRound!.Groups.Count;
-            job.LastRunAt = DateTime.Now;
-            ScheduleStore.Save(job);
-
-            // Overall progress is opened by RunSupervisor.StartInteractive above, so every split
-            // launch gets it rather than only the ones that remembered to ask.
-            if (chunkErr != null)
-                Autodesk.Revit.UI.TaskDialog.Show(title, chunkErr);
             return true;
         }
 

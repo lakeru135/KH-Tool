@@ -24,7 +24,7 @@ public sealed class PublishCloudModelCommand : IExternalCommand
         List<ModelPreset> presets = PresetStore.LoadAll();
         if (presets.Count == 0)
         {
-            TaskDialog.Show("KH Batch Script Runner",
+            TaskDialog.Show(Product.Name,
                 "No model sets found.\n\n" +
                 "Create one first with Setting → Edit Model Set, then run Publish Cloud Model.");
             return Result.Cancelled;

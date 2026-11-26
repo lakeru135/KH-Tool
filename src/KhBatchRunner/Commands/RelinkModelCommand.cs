@@ -30,13 +30,13 @@ public sealed class RelinkModelCommand : IExternalCommand
         UIApplication uiApp = commandData.Application;
 
         List<ModelPreset> presets = PresetStore.LoadAll();
-        if (BatchCommandFlow.NoModelSets(presets, "KH Batch Script Runner", "Internal Relink"))
+        if (BatchCommandFlow.NoModelSets(presets, Product.Name, "Internal Relink"))
             return Result.Cancelled;
 
         var client = new DataManagementClient(new SessionTokenProvider());
 
         RelinkModelWindow? dialog = BatchCommandFlow.TryCreateDialog(
-            () => new RelinkModelWindow(presets, client), "KH Batch Script Runner", "Internal Relink");
+            () => new RelinkModelWindow(presets, client), Product.Name, "Internal Relink");
         if (dialog == null) return Result.Failed;
         using var _dlg = dialog;
         if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
@@ -57,7 +57,7 @@ public sealed class RelinkModelCommand : IExternalCommand
         }
         catch (Exception ex)
         {
-            TaskDialog.Show("KH Batch Script Runner",
+            TaskDialog.Show(Product.Name,
                 "Could not scan the target folders for models:\n\n" + ex.Message);
             return Result.Failed;
         }
@@ -73,31 +73,31 @@ public sealed class RelinkModelCommand : IExternalCommand
 
         // Preview + confirm — this rewrites the host models' link references and syncs them.
         int candidateCount = targets.Values.Sum(l => l.Count);
-        var confirm = new TaskDialog("Internal Relink — Forma Batch Action")
-        {
-            MainInstruction = $"Relink {chosen.Models.Count} host model(s): {inputs.OldCode} → {inputs.NewCode}?",
-            MainContent =
-                $"Host model set: {chosen.Name} ({chosen.Models.Count} model(s))\n" +
-                $"Remap: links named '{inputs.OldCode}{inputs.Separator}…' → '{inputs.NewCode}{inputs.Separator}…'\n" +
-                (inputs.MatchByExactName
-                    ? "Other links are re-pointed when a target model has the exact same name (bridge/shared models).\n"
-                    : "") +
-                $"Target models found: {candidateCount} ({targets.Count} name(s)) across {inputs.TargetFolders.Count} folder(s)" +
-                (multiNameCount > 0
-                    ? $"\n{multiNameCount} name(s) have several same-named candidates — resolved per link " +
-                      "(the copy a link already points at is excluded; anything still ambiguous is reported, not guessed)."
-                    : "") + "\n" +
-                (setNote != null ? setNote + "\n" : "") + "\n" +
-                "Each host is opened, its matching links are re-pointed to the target models, " +
-                "and the host is synced back to its cloud central. Continue?",
-            CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
-            DefaultButton = TaskDialogResult.No
-        };
-        if (confirm.Show() != TaskDialogResult.Yes)
-            return Result.Cancelled;
+        // Asked in the run window (Confirm state), not a TaskDialog.
+        RunConfirmation? confirm = new RunConfirmation(
+            $"Relink {chosen.Models.Count} host model(s): {inputs.OldCode} → {inputs.NewCode}?",
+            $"Host model set: {chosen.Name} ({chosen.Models.Count} model(s))\n" +
+            $"Remap: links named '{inputs.OldCode}{inputs.Separator}…' → '{inputs.NewCode}{inputs.Separator}…'\n" +
+            (inputs.MatchByExactName
+                ? "Other links are re-pointed when a target model has the exact same name (bridge/shared models).\n"
+                : "") +
+            $"Target models found: {candidateCount} ({targets.Count} name(s)) across {inputs.TargetFolders.Count} folder(s)" +
+            (multiNameCount > 0
+                ? $"\n{multiNameCount} name(s) have several same-named candidates — resolved per link " +
+                  "(the copy a link already points at is excluded; anything still ambiguous is reported, not guessed)."
+                : "") + "\n" +
+            (setNote != null ? setNote + "\n" : "") + "\n" +
+            "Each host is opened, its matching links are re-pointed to the target models, " +
+            "and the host is synced back to its cloud central.");
 
         var action = new RelinkLinksAction(inputs.OldCode, inputs.NewCode, inputs.Separator,
             inputs.MatchByExactName, targets);
+
+        // When parallel groups are refused (a host that is also a link target) the notice used to
+        // be its own dialog; it now rides in the same confirmation, whichever way the run goes.
+        string? blockedReason = Schedule.RelinkSplitGuard.SelfLinkingHost(chosen.Models, targets);
+        confirm = Schedule.InteractiveSplit.NoteBlocked(
+            confirm, action.Name, dialog.SplitEnabled ? blockedReason : null);
 
         // Parallel auto-split, same shape as Batch Run / Multi Model Check — but Internal Relink is
         // the one action with a real reason to refuse it (see RelinkSplitGuard). The child process
@@ -115,12 +115,13 @@ public sealed class RelinkModelCommand : IExternalCommand
                 ProjectLogName = inputs.ProjectLogName
             },
             chosen.Models, dialog.SplitEnabled, action.Name, dialog.SelectedCompletion,
-            Schedule.RelinkSplitGuard.SelfLinkingHost(chosen.Models, targets));
+            blockedReason, actionConfirm: confirm);
         if (split.HasValue) return split.Value;
 
         // Modal message-loop runner, NOT BatchIdlingDriver — hosts are Forma cloud models.
         return BatchCommandFlow.RunModal(uiApp, action, chosen, inputs.DestinationFolder,
-            inputs.ProjectLogName, dialog.SelectedCompletion, "KH Batch Script Runner", "Internal Relink");
+            inputs.ProjectLogName, dialog.SelectedCompletion, Product.Name, "Internal Relink",
+            confirm);
     }
 
     /// <summary>

@@ -51,9 +51,22 @@ internal static class Program
         try
         {
             string? path = ResolveOpenable(argument);
-            if (path == null) return ExitBadArguments;
+            if (path != null)
+            {
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+                return 0;
+            }
 
-            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            // "Open result": a run's destination folder, on the same protocol. Opened by starting
+            // explorer.exe with the folder as an ARGUMENT, never by ShellExecute on the path — a
+            // folder-shaped path from a web page must not be able to become "run this".
+            string? folder = ResolveResultFolder(argument);
+            if (folder == null) return ExitBadArguments;
+
+            Process.Start(new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"), "\"" + folder + "\"")
+            {
+                UseShellExecute = false
+            });
             return 0;
         }
         catch
@@ -66,6 +79,32 @@ internal static class Program
     /// decide whether to offer an "Open log" action at all rather than offering one that does
     /// nothing.</summary>
     internal static bool CanOpenLog(string? argument) => ResolveOpenable(argument) != null;
+
+    /// <summary>The same question for "Open result": would this be accepted as a run's destination
+    /// folder?</summary>
+    internal static bool CanOpenResult(string? argument) => ResolveResultFolder(argument) != null;
+
+    /// <summary>
+    /// A run's destination folder, derived from its tracking log (<c>&lt;dest&gt;\Log\x.csv</c> →
+    /// <c>&lt;dest&gt;</c>), or null when the path is not shaped like one. The card is handed only
+    /// the log path, so this is how it finds the folder without a new environment variable.
+    /// </summary>
+    internal static string? ResultFolderOfLog(string? logPath)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(logPath)) return null;
+            string? logDir = Path.GetDirectoryName(Path.GetFullPath(logPath));
+            if (logDir == null ||
+                !string.Equals(Path.GetFileName(logDir), "Log", StringComparison.OrdinalIgnoreCase))
+                return null;
+            return Path.GetDirectoryName(logDir);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     /// <summary>
     /// <c>--toast-sweep</c>: remove the toasts whose retention window has passed, and nothing else.
@@ -95,21 +134,8 @@ internal static class Program
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(argument)) return null;
-
-            string value = argument!.Trim();
-            // khbatchlog: since 2.0.0. The 1.x scheme (legacy-names allow-list) still arrives from
-            // links in CSVs and notifications written before the upgrade; the installer registers
-            // it as an alias for this same handler.
-            foreach (string scheme in new[] { "khbatchlog:", "accbatchlog:" })
-                if (value.StartsWith(scheme, StringComparison.OrdinalIgnoreCase))
-                {
-                    value = value.Substring(scheme.Length);
-                    break;
-                }
-            value = Uri.UnescapeDataString(value).Trim('/', '"');
-
-            string path = Path.GetFullPath(value);
+            string? path = FullPathOf(argument);
+            if (path == null) return null;
             string extension = Path.GetExtension(path);
             bool allowed = false;
             foreach (string candidate in OpenableExtensions)
@@ -121,6 +147,54 @@ internal static class Program
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// The folder gate, deliberately as narrow as the file gate: an EXISTING directory that contains
+    /// a <c>Log</c> subfolder. Every KH-Tool destination has one (the tracking CSVs live there), and
+    /// an arbitrary folder does not — so this cannot be used to open "any path" from a web page.
+    /// </summary>
+    private static string? ResolveResultFolder(string? argument)
+    {
+        try
+        {
+            string? path = FullPathOf(argument);
+            if (path == null || path.IndexOf('"') >= 0) return null;   // it goes in a quoted argument
+            // Drive-letter rooted only, checked BEFORE touching the disk: a UNC or device path
+            // (\\server\share, \\?\, \\.\) from a web link would make Directory.Exists do an SMB
+            // lookup. A mapped network drive letter is fine.
+            if (path.StartsWith(@"\\", StringComparison.Ordinal) || path.StartsWith("//", StringComparison.Ordinal) ||
+                path.Length < 3 || !char.IsLetter(path[0]) || path[1] != ':' || path[2] != '\\')
+                return null;
+            return Directory.Exists(path) && Directory.Exists(Path.Combine(path, "Log")) ? path : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Strips the protocol scheme and escaping and returns the full path, or null if blank.</summary>
+    private static string? FullPathOf(string? argument)
+    {
+        if (string.IsNullOrWhiteSpace(argument)) return null;
+
+        string value = argument!.Trim();
+        // khbatchlog: since 2.0.0. The 1.x scheme (legacy-names allow-list) still arrives from
+        // links in CSVs and notifications written before the upgrade; the installer registers
+        // it as an alias for this same handler.
+        // Percent-decoding applies only to what arrived through the protocol (it was escaped by
+        // Uri.EscapeDataString); a plain path from the card is taken literally, so a folder named
+        // "Proj%20A" still opens.
+        foreach (string scheme in new[] { "khbatchlog:", "accbatchlog:" })
+            if (value.StartsWith(scheme, StringComparison.OrdinalIgnoreCase))
+            {
+                value = Uri.UnescapeDataString(value.Substring(scheme.Length));
+                break;
+            }
+        value = value.Trim('/', '"');
+
+        return Path.GetFullPath(value);
     }
 
     [STAThread]

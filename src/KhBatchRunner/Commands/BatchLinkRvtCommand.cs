@@ -77,37 +77,31 @@ public sealed class BatchLinkRvtCommand : IExternalCommand
             ? $"Each link gets its own workset, named {inputs.LinkKeyword}_<link name>."
             : $"Every link goes on the workset \"{inputs.SharedWorksetName}\".";
 
-        var confirm = new TaskDialog("Batch Link RVT — Multi Model Action")
-        {
-            MainInstruction =
-                $"Link {inputs.Sources.Count} model(s) into {chosen.Models.Count} host model(s)?",
-            MainContent =
-                $"Host model set: {chosen.Name} ({chosen.Models.Count} model(s))\n" +
-                $"Linking: {Describe(inputs.Sources)}\n" +
-                worksetLine + "\n" +
-                (inputs.SkipIfAlreadyLinked
-                    ? "A source a host already links is skipped, not linked twice.\n"
-                    : "DUPLICATES ARE ALLOWED — a host that already links a source gets a second link to it.\n") +
-                (clashes.Count > 0
-                    ? $"\nWARNING — {clashes.Count} model(s) are BOTH a host and a source " +
-                      $"({string.Join(", ", clashes.Take(3))}{(clashes.Count > 3 ? ", …" : "")}). " +
-                      "A model cannot link itself, and once an earlier host has loaded it as a link it " +
-                      "can only be opened read-only, so it will be reported as failed. Remove it from " +
-                      "one side, or run with \"Close files\".\n"
-                    : "") +
-                (setNote != null ? "\n" + setNote + "\n" : "") + "\n" +
-                "Each host is opened, given the links, and synced back to its cloud central. Continue?",
-            CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
-            DefaultButton = TaskDialogResult.No
-        };
-        if (confirm.Show() != TaskDialogResult.Yes)
-            return Result.Cancelled;
+        // Asked in the run window (Confirm state), not a TaskDialog.
+        var confirm = new RunConfirmation(
+            $"Link {inputs.Sources.Count} model(s) into {chosen.Models.Count} host model(s)?",
+            $"Host model set: {chosen.Name} ({chosen.Models.Count} model(s))\n" +
+            $"Linking: {Describe(inputs.Sources)}\n" +
+            worksetLine + "\n" +
+            (inputs.SkipIfAlreadyLinked
+                ? "A source a host already links is skipped, not linked twice.\n"
+                : "DUPLICATES ARE ALLOWED — a host that already links a source gets a second link to it.\n") +
+            (clashes.Count > 0
+                ? $"\nWARNING — {clashes.Count} model(s) are BOTH a host and a source " +
+                  $"({string.Join(", ", clashes.Take(3))}{(clashes.Count > 3 ? ", …" : "")}). " +
+                  "A model cannot link itself, and once an earlier host has loaded it as a link it " +
+                  "can only be opened read-only, so it will be reported as failed. Remove it from " +
+                  "one side, or run with \"Close files\".\n"
+                : "") +
+            (setNote != null ? "\n" + setNote + "\n" : "") + "\n" +
+            "Each host is opened, given the links, and synced back to its cloud central.");
 
         var action = new BatchLinkRvtAction(inputs);
 
         // Modal message-loop runner, NOT BatchIdlingDriver — hosts are Forma cloud models.
         return BatchCommandFlow.RunModal(uiApp, action, chosen, inputs.DestinationFolder,
-            inputs.ProjectLogName, dialog.SelectedCompletion, "Batch Link RVT", "Batch Link RVT");
+            inputs.ProjectLogName, dialog.SelectedCompletion, "Batch Link RVT", "Batch Link RVT",
+            confirm);
     }
 
     /// <summary>The source list for the confirm dialog: names when there are few, counts when many.</summary>

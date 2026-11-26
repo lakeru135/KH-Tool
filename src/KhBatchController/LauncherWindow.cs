@@ -111,11 +111,9 @@ internal sealed class LauncherWindow : Form
         AddTool("Edit DYN Script Set", Icons.EditScriptSet(glyph), () => new EditScriptSetWindow());
         EndPanel();
 
-        BeginPanel("Batch Run");
+        // One tile each, so they share a panel (and a row) instead of one full-width row apiece.
+        BeginPanel("Batch Run / Schedule");
         AddTool("Batch Run", Icons.DynMultiPlayer(glyph), () => new BatchRunWindow(_broker, _revitExe));
-        EndPanel();
-
-        BeginPanel("Schedule");
         // The add-in's own Schedule Run window, unmodified — same dialog, same behaviour.
         AddTool("Schedule Run", Icons.ScheduleRun(glyph), () => new ScheduleRunWindow(_dm));
         EndPanel();
@@ -230,7 +228,9 @@ internal sealed class LauncherWindow : Form
         _blocks.Add((BlockKind.PanelTitle, label));
         _y += 20;
 
-        var rule = new Panel
+        // ThemeRule, not Panel: Theme.Apply paints every plain Panel the form colour, which made the
+        // hairline vanish in dark mode. A ThemeRule gets the palette's border colour instead.
+        var rule = new ThemeRule
         {
             Location = new Point(16, _y),
             Size = new Size(Math.Max(40, _canvas.ClientSize.Width - 40), 1),
@@ -394,12 +394,13 @@ internal sealed class LauncherWindow : Form
     {
         EndPanel();
         _y += 10;
-        var note = new Label
+        // HelpNote: Theme.Apply dims it in both themes (a plain Label was reset to full-strength text).
+        var note = new HelpNote
         {
             Text = text,
+            AutoSize = false,
             Location = new Point(16, _y),
-            Size = new Size(Math.Max(40, _canvas.ClientSize.Width - 40), 52),
-            ForeColor = SystemColors.GrayText
+            Size = new Size(Math.Max(40, _canvas.ClientSize.Width - 40), 52)
         };
         _canvas.Controls.Add(note);
         _blocks.Add((BlockKind.Note, note));

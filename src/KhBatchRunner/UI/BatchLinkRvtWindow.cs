@@ -483,7 +483,7 @@ public sealed class BatchLinkRvtWindow : Form
         public PresetItem(ModelPreset preset) => Preset = preset;
         public override string ToString() => ModelSetAccess.Label(Preset, Preset.IsFolderBacked
             ? $"{Preset.Name}  [folder]"
-            : $"{Preset.Name}  ({Preset.Models.Count} models)");
+            : $"{Preset.Name}  ({UiText.Plural(Preset.Models.Count, "model")})");
     }
 
     private sealed class SetItem

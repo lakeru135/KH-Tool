@@ -45,6 +45,26 @@ internal sealed class WallMatTagWindow : DrwToolWindow
         _left = DrwControls.Combo(data.MaterialTagTypes, withNone: true);
         _right = DrwControls.Combo(data.MaterialTagTypes, withNone: true);
         _elevation = DrwControls.Combo(data.MaterialTagTypes, withNone: true);
+        // Two lines up front, the rest behind "More..." so Walls / Views / Options stay above the
+        // fold (E17: ten lines of prose pushed them under a scrollbar).
+        var shortNote = FormLayout.NoteLabel(this, "For a tag family with one type per direction: the type for the side the " +
+            "face is seen from is used. One type in every box is fine too. New tags show '?' until you touch them in Revit.");
+        var moreNote = FormLayout.NoteLabel(this,
+            "The triangle points at the face. KH_Anno_Wall Mat tag comes with DRW Helper and is loaded into the model the first time it is used. " +
+            "Plans and sections tag only the walls they cut: the point goes 5 mm in from the finish face (a thinner " +
+            "finish layer: its middle), with no leader; the two faces' tags line up, and on a wall off the view's axes " +
+            "the tag turns with the wall. A section tags the walls it cuts on the cut, up the wall, and the walls seen beyond " +
+            "it as an elevation does. Elevations tag each surface they look " +
+            "at, upright. A face split or painted in surfaces gets one tag per surface. " +
+            "Revit's API cannot link a new material tag to its material, so new tags show '?' until you touch " +
+            "them in Revit; they are left selected for that. Coarse views show no layers and are skipped.");
+        moreNote.Visible = false;
+        var more = new LinkLabel { Text = "More…", AutoSize = true, Margin = new Padding(3, 0, 3, 4) };
+        more.LinkClicked += (_, _) =>
+        {
+            moreNote.Visible = !moreNote.Visible;
+            more.Text = moreNote.Visible ? "Less" : "More…";
+        };
         var types = DrwControls.Group("Material tag",
             FormLayout.LabeledRow("Faces:", _faces),
             FormLayout.LabeledRow("Type that sits above the face:", _above),
@@ -52,22 +72,13 @@ internal sealed class WallMatTagWindow : DrwToolWindow
             FormLayout.LabeledRow("Type that sits left of the face:", _left),
             FormLayout.LabeledRow("Type that sits right of the face:", _right),
             FormLayout.LabeledRow("Type in elevations (triangle points up):", _elevation),
-            FormLayout.NoteLabel(this, "For a tag family with one type per direction (the triangle points at the face): " +
-                "the type for the side the face is seen from is used. One type in every box is fine too. " +
-                "KH_Anno_Wall Mat tag comes with DRW Helper and is loaded into the model the first time it is used. " +
-                "Plans and sections tag only the walls they cut: the point goes 5 mm in from the finish face (a thinner " +
-                "finish layer: its middle), with no leader; the two faces' tags line up, and on a wall off the view's axes " +
-                "the tag turns with the wall. A section tags the walls it cuts on the cut, up the wall, and the walls seen beyond " +
-                "it as an elevation does. Elevations tag each surface they look " +
-                "at, upright. A face split or painted in surfaces gets one tag per surface. " +
-                "Revit's API cannot link a new material tag to its material, so new tags show '?' until you touch " +
-                "them in Revit; they are left selected for that. Coarse views show no layers and are skipped."));
+            shortNote, more, moreNote);
 
         _perPiece = DrwControls.Check("One tag pair per wall piece between openings and meeting walls", false);
         _minPiece = DrwControls.Number(300, 0, 100000, 0, 50);
         var pieces = DrwControls.Group("Pieces",
             _perPiece,
-            FormLayout.LabeledRow("Pieces shorter than, mm (skip):", _minPiece));
+            FormLayout.LabeledRow("Pieces shorter than, mm (skip):", FormLayout.ShortField(_minPiece)));
 
         _typeMark = new TextBox { Width = 160 };
         _typeName = new TextBox { Width = 160 };
@@ -79,7 +90,7 @@ internal sealed class WallMatTagWindow : DrwToolWindow
                 "finish wall's outer face is. Walls and columns meeting a face also cut it into pieces."),
             FormLayout.LabeledRow("Only Type Mark containing:", _typeMark),
             FormLayout.LabeledRow("Only wall type name containing:", _typeName),
-            FormLayout.LabeledRow("Walls shorter than, mm (skip):", _minLength));
+            FormLayout.LabeledRow("Walls shorter than, mm (skip):", FormLayout.ShortField(_minLength)));
 
         _plans = DrwControls.Check("Plans", true);
         _sections = DrwControls.Check("Sections", false);

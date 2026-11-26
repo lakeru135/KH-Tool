@@ -34,8 +34,10 @@ public sealed class DataExtractWindow : Form
     private readonly Label _latestLabel;
     private readonly CheckBox _zipInstead;
     private readonly CheckBox _skipDownloaded;
-    private readonly TextBox _setNameBox;
     private readonly ComboBox _setCombo;
+    private readonly InputSetActions<DataExtractInputSet> _sets;
+    /// <summary>True while <see cref="ApplySet"/> writes the set's name into the combo, so that does not re-load the set.</summary>
+    private bool _syncingCombo;
     private readonly TextBox _folderBox;
     private readonly Button _runButton;
     private readonly StatusLine _status;
@@ -101,16 +103,24 @@ public sealed class DataExtractWindow : Form
             Margin = new Padding(3, 2, 3, 4)
         };
 
-        _setNameBox = new TextBox();
-        var saveSet = new Button { Text = "Save", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(70, 0) };
+        // One editable combo + Save / Duplicate / Delete — the shared InputSetActions pattern (as
+        // CutModelWindow). Picking a set in the combo loads it (this window's old Load button).
+        _setCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown };
+        _setCombo.SelectedIndexChanged += (_, _) =>
+        {
+            if (_syncingCombo || _setCombo.SelectedItem is not DataExtractInputSet set) return;
+            ApplySet(set.Clone());
+            SetStatus($"Loaded set '{set.Name}' — {set.TargetLabel}, {set.ScopeLabel}.");
+        };
+        _sets = new InputSetActions<DataExtractInputSet>(this, _setCombo,
+            DataExtractSetStore.LoadAll, DataExtractSetStore.Exists, DataExtractSetStore.Save, DataExtractSetStore.Delete,
+            x => x.Name, x => x.Clone(), (x, name) => x.Name = name,
+            x => x, o => o as DataExtractInputSet, Warn, noun: "set", boxLabel: "Saved set");
+        var saveSet = new Button { Text = "Save set", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(80, 0) };
         saveSet.Click += (_, _) => SaveSet();
-
-        _setCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
-        var loadSet = new Button { Text = "Load", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(60, 0) };
-        loadSet.Click += (_, _) => LoadSelectedSet();
         var dupSet = new Button { Text = "Duplicate", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(80, 0) };
         dupSet.Click += (_, _) => DuplicateSet();
-        var deleteSet = new Button { Text = "Delete", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(60, 0) };
+        var deleteSet = new Button { Text = "Delete", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(70, 0) };
         deleteSet.Click += (_, _) => DeleteSet();
 
         _folderBox = new TextBox { Text = Settings.UserSettings.DefaultDestinationFolder };
@@ -138,8 +148,7 @@ public sealed class DataExtractWindow : Form
         FormLayout.AddAutoRow(body, _latestLabel);
         FormLayout.AddAutoRow(body, _zipInstead);
         FormLayout.AddAutoRow(body, _skipDownloaded);
-        FormLayout.AddAutoRow(body, FormLayout.LabeledRow("Set name:", _setNameBox, saveSet));
-        FormLayout.AddAutoRow(body, FormLayout.LabeledRow("Saved sets:", _setCombo, loadSet, dupSet, deleteSet));
+        FormLayout.AddAutoRow(body, FormLayout.LabeledRow("Saved set:", _setCombo, saveSet, dupSet, deleteSet));
         FormLayout.AddAutoRow(body, FormLayout.LabeledRow("Destination folder:", _folderBox, browse));
         // The spacer row, not the rows above it, absorbs a resize — every row here is fixed, and
         // without one the table hands the extra height to whichever row is last.
@@ -156,10 +165,11 @@ public sealed class DataExtractWindow : Form
         FormLayout.AlignLabels(this);
         note.ForeColor = Theme.Dim(note);
         _latestLabel.ForeColor = Theme.Dim(_latestLabel);
+        FormLayout.KeepFitted(this, body, _status); // grows with DPI scaling instead of overlapping
 
         Load += (_, _) =>
         {
-            ReloadSets(null);
+            _sets.Reload(selectName: null);
             LoadHubs(DataExtractSetStore.TryLoadLastUsed());
         };
     }
@@ -193,7 +203,7 @@ public sealed class DataExtractWindow : Form
         }
         finally { UseWaitCursor = false; }
 
-        if (pending != null) ApplySet(pending);
+        if (pending != null) ApplySet(pending, restored: true);
         else if (_hubCombo.Items.Count == 1) { _hubCombo.SelectedIndex = 0; }
     }
 
@@ -321,14 +331,29 @@ public sealed class DataExtractWindow : Form
         ProjectLogName = DataExtractStep.DisplayName,
     };
 
-    private void ApplySet(DataExtractInputSet? set)
+    /// <summary>The name to treat as "the loaded set" after restoring the LAST-USED snapshot: only when a
+    /// saved set of that name exists with identical content. Last-used records whatever name was typed,
+    /// loaded or not, so trusting it would let a later Save overwrite an unrelated set without the prompt.</summary>
+    private static string? LoadedNameFor(DataExtractInputSet snapshot, DataExtractInputSet? saved) =>
+        saved != null && !string.IsNullOrWhiteSpace(snapshot.Name) &&
+        System.Text.Json.JsonSerializer.Serialize(snapshot) == System.Text.Json.JsonSerializer.Serialize(saved)
+            ? snapshot.Name : null;
+
+    private void ApplySet(DataExtractInputSet? set, bool restored = false)
     {
         if (set is null) return;
         _applying = true;
         try
         {
-            _setNameBox.Text = set.Name;
-            _loadedSetName = string.IsNullOrWhiteSpace(set.Name) ? null : set.Name;
+            // The combo's own text IS the set name now. Guarded: naming it selects the matching saved
+            // set, which must not re-load that set over what is being applied (e.g. a last-used snapshot).
+            _syncingCombo = true;
+            try { _setCombo.Text = set.Name; }
+            finally { _syncingCombo = false; }
+            _loadedSetName = restored
+                ? LoadedNameFor(set, DataExtractSetStore.LoadAll().FirstOrDefault(x =>
+                    string.Equals(x.Name, set.Name, StringComparison.OrdinalIgnoreCase)))
+                : string.IsNullOrWhiteSpace(set.Name) ? null : set.Name;
             _zipInstead.Checked = set.DownloadZipInstead;
             _skipDownloaded.Checked = set.SkipIfAlreadyDownloaded;
             if (!string.IsNullOrWhiteSpace(set.DestinationFolder))
@@ -346,85 +371,27 @@ public sealed class DataExtractWindow : Form
         if (_hubCombo.SelectedItem is FormaEntry) ReloadRequests(set.RequestId);
     }
 
-    private void ReloadSets(string? select)
-    {
-        _setCombo.Items.Clear();
-        foreach (DataExtractInputSet set in DataExtractSetStore.LoadAll()) _setCombo.Items.Add(set);
-        if (select == null) return;
-        for (int i = 0; i < _setCombo.Items.Count; i++)
-            if (_setCombo.Items[i] is DataExtractInputSet s &&
-                s.Name.Equals(select, StringComparison.OrdinalIgnoreCase))
-            { _setCombo.SelectedIndex = i; return; }
-    }
-
-    private void LoadSelectedSet()
-    {
-        if (_setCombo.SelectedItem is not DataExtractInputSet set) { Warn("Choose a saved set first."); return; }
-        ApplySet(set.Clone());
-        SetStatus($"Loaded set '{set.Name}' — {set.TargetLabel}, {set.ScopeLabel}.");
-    }
-
     private void SaveSet()
     {
-        string name = _setNameBox.Text.Trim();
-        if (string.IsNullOrEmpty(name)) { Warn("Enter a set name to save."); return; }
-        if (!Current(name).HasTarget) { Warn("Choose an account and an extract before saving."); return; }
-
-        // Renaming a loaded set moves it rather than leaving the old name behind as a stale twin.
-        bool renaming = _loadedSetName != null &&
-                        !name.Equals(_loadedSetName, StringComparison.OrdinalIgnoreCase);
-        if (DataExtractSetStore.Exists(name) && (_loadedSetName == null || renaming))
-        {
-            if (MessageBox.Show(this, $"A set named '{name}' already exists. Replace it?", Text,
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
-                return;
-        }
-
         try
         {
-            DataExtractSetStore.Save(Current(name));
-            if (renaming) DataExtractSetStore.Delete(_loadedSetName!);
-            _loadedSetName = name;
-            ReloadSets(name);
-            SetStatus($"Saved set '{name}'.");
+            _sets.Save(ref _loadedSetName, Current,
+                () => !Current("x").HasTarget ? "Choose an account and an extract before saving." : null);
         }
-        catch (Exception ex) { Warn("Could not save the set: " + First(ex)); }
+        catch (Exception ex) { Warn("Could not save the set: " + First(ex)); return; }
+        // Only claim a save when one happened (a declined overwrite leaves the typed name unsaved).
+        if (_loadedSetName != null && _setCombo.Text.Trim().Equals(_loadedSetName, StringComparison.OrdinalIgnoreCase))
+            SetStatus($"Saved set '{_loadedSetName}'.");
     }
 
-    /// <summary>
-    /// Forks the selected set to a new "&lt;name&gt; (copy)" and loads the copy — see
-    /// <c>FormaExtractWindow.DuplicateSet</c> for why <see cref="ApplySet"/> must re-point
-    /// <c>_loadedSetName</c> at the copy.
-    /// </summary>
-    private void DuplicateSet()
-    {
-        if (_setCombo.SelectedItem is not DataExtractInputSet set) { Warn("Choose a saved set first."); return; }
-        DataExtractInputSet copy = set.Clone();
-        copy.Name = SetDuplication.UniqueName(set.Name, DataExtractSetStore.LoadAll().Select(s => s.Name));
-        try
-        {
-            DataExtractSetStore.Save(copy);
-        }
-        catch (Exception ex) { Warn("Could not duplicate the set: " + First(ex)); return; }
-        ReloadSets(copy.Name);
-        ApplySet(copy);
-        SetStatus($"Duplicated '{set.Name}' as '{copy.Name}'.");
-    }
+    /// <summary>Forks the selected set to a new "&lt;name&gt; (copy)" and loads the copy — see
+    /// <see cref="InputSetActions{T}.Duplicate"/>, which leans on the combo's selection change to
+    /// re-point <c>_loadedSetName</c> at the COPY (else the next Save would delete the original).</summary>
+    private void DuplicateSet() => _sets.Duplicate();
 
     private void DeleteSet()
     {
-        if (_setCombo.SelectedItem is not DataExtractInputSet set) { Warn("Choose a saved set first."); return; }
-        if (MessageBox.Show(this, $"Delete the saved set '{set.Name}'?", Text,
-                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
-            return;
-        try
-        {
-            DataExtractSetStore.Delete(set.Name);
-            if (string.Equals(_loadedSetName, set.Name, StringComparison.OrdinalIgnoreCase))
-                _loadedSetName = null;
-            ReloadSets(null);
-            SetStatus($"Deleted set '{set.Name}'.");
-        }
+        try { _sets.Delete(ref _loadedSetName); }
         catch (Exception ex) { Warn("Could not delete the set: " + First(ex)); }
     }
 
@@ -448,7 +415,7 @@ public sealed class DataExtractWindow : Form
     {
         if (string.IsNullOrWhiteSpace(_folderBox.Text)) { Warn("Choose a destination folder."); return; }
 
-        DataExtractInputSet set = Current(_setNameBox.Text.Trim());
+        DataExtractInputSet set = Current(_setCombo.Text.Trim());
         if (!set.HasTarget) { Warn("Choose an account and an extract."); return; }
         string dest = set.DestinationFolder;
         // Remembered even when the set was never named, so reopening the dialog resumes where it
